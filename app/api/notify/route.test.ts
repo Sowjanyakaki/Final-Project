@@ -12,7 +12,7 @@ vi.mock('../../../lib/db/client', () => ({
   db: { select: mockSelect },
 }));
 
-import { POST } from './route';
+import { POST, __resetNotifyRateLimitForTests } from './route';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/notify', {
@@ -38,6 +38,7 @@ describe('POST /api/notify', () => {
     mockFrom.mockReturnValue({ innerJoin: mockInnerJoin });
     mockInnerJoin.mockReturnValue({ where: mockWhere });
     process.env.N8N_WEBHOOK_URL = 'https://n8n.example.com/webhook/shortlist-pdf';
+    __resetNotifyRateLimitForTests();
   });
 
   it('sends the shortlist and returns status sent on the happy path', async () => {
@@ -108,5 +109,21 @@ describe('POST /api/notify', () => {
   it('returns 400 for a missing sessionId', async () => {
     const res = await POST(makeRequest({ email: 'user@example.com' }));
     expect(res.status).toBe(400);
+  });
+
+  it('returns 429 and does not call the webhook on a second request for the same session within the cooldown', async () => {
+    mockWhere.mockResolvedValue([sampleRow]);
+    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const first = await POST(makeRequest({ sessionId: 'sess-rate-limit', email: 'user@example.com' }));
+    expect(first.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    const second = await POST(makeRequest({ sessionId: 'sess-rate-limit', email: 'attacker@example.com' }));
+    const json = await second.json();
+
+    expect(second.status).toBe(429);
+    expect(json.error).toMatch(/too many/i);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

