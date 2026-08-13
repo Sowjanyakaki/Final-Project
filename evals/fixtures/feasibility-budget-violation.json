@@ -1,0 +1,71 @@
+{
+  "session": {
+    "id": "sess-1",
+    "createdAt": "2026-08-01T10:00:00.000Z",
+    "status": "active",
+    "constraints": {
+      "budgetMax": 40000,
+      "bedrooms": 2,
+      "mustHaves": ["parking"],
+      "commutePoint": "Koramangala"
+    }
+  },
+  "shortlistItems": [
+    {
+      "id": 2,
+      "sessionId": "sess-1",
+      "listingId": 2,
+      "status": "active",
+      "reason": "Good bedrooms but pricier",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 2,
+        "sourceUrl": "https://bengaluru.rent/listing/2",
+        "societyName": "Skyline Residency",
+        "locality": "Koramangala",
+        "lat": 12.936,
+        "lng": 77.615,
+        "rent": 45000,
+        "bedrooms": 2,
+        "furnishing": "furnished",
+        "amenities": ["parking"],
+        "sqft": 1150,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    },
+    {
+      "id": 3,
+      "sessionId": "sess-1",
+      "listingId": 3,
+      "status": "active",
+      "reason": "In budget but no parking listed",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 3,
+        "sourceUrl": "https://bengaluru.rent/listing/3",
+        "societyName": "Maple Court",
+        "locality": "Koramangala",
+        "lat": 12.9345,
+        "lng": 77.614,
+        "rent": 39000,
+        "bedrooms": 2,
+        "furnishing": "semi-furnished",
+        "amenities": ["balcony"],
+        "sqft": 1050,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "toolCallLog": [
+    {
+      "id": 2,
+      "sessionId": "sess-1",
+      "toolName": "osmNearby",
+      "input": { "lat": 12.936, "lng": 77.615, "category": "commute", "commutePoint": "Koramangala" },
+      "output": { "items": [{ "name": "Koramangala Metro Access Point", "distanceMeters": 1200 }], "uncertain": false },
+      "createdAt": "2026-08-01T10:06:00.000Z"
+    }
+  ]
+}

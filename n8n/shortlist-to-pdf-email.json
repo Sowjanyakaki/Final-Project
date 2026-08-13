@@ -1,0 +1,93 @@
+{
+  "name": "Shortlist to PDF Email",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "shortlist-pdf",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1f2a3b4c-0000-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "shortlist-pdf-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json; const shortlist = Array.isArray(body.shortlist) ? body.shortlist : []; const rows = shortlist.map((item) => '<tr><td>' + item.societyName + '</td><td>' + item.locality + '</td><td>' + item.rent + '</td><td>' + item.bedrooms + '</td><td>' + (item.amenities || []).join(', ') + '</td><td>' + item.sqft + '</td></tr>').join(''); const html = '<html><body><h2>Your Property Shortlist</h2><table border=1 cellpadding=6 cellspacing=0><thead><tr><th>Society</th><th>Locality</th><th>Rent</th><th>Bedrooms</th><th>Amenities</th><th>Sqft</th></tr></thead><tbody>' + rows + '</tbody></table></body></html>'; return [{ json: { html, email: body.email, sessionId: body.sessionId } }];"
+      },
+      "id": "1f2a3b4c-0000-4000-8000-000000000002",
+      "name": "Format Shortlist HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getPdf",
+        "html": "={{$json.html}}",
+        "options": {}
+      },
+      "id": "1f2a3b4c-0000-4000-8000-000000000003",
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-puppeteer.puppeteer",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "notify@yourdomain.com",
+        "toEmail": "={{$json.email}}",
+        "subject": "Your Property Shortlist",
+        "text": "Hi,\n\nPlease find your property shortlist attached as a PDF.\n\n— NextLeap Property Scout",
+        "attachments": "data",
+        "options": {}
+      },
+      "id": "1f2a3b4c-0000-4000-8000-000000000004",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {status: 'sent'} }}",
+        "options": {}
+      },
+      "id": "1f2a3b4c-0000-4000-8000-000000000005",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Format Shortlist HTML", "type": "main", "index": 0 }]]
+    },
+    "Format Shortlist HTML": {
+      "main": [[{ "node": "Convert to PDF", "type": "main", "index": 0 }]]
+    },
+    "Convert to PDF": {
+      "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]]
+    },
+    "Send Email": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

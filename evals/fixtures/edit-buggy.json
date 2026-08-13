@@ -1,0 +1,148 @@
+{
+  "beforeItems": [
+    {
+      "id": 1,
+      "sessionId": "sess-1",
+      "listingId": 1,
+      "status": "active",
+      "reason": "Within budget and has parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 1,
+        "sourceUrl": "https://bengaluru.rent/listing/1",
+        "societyName": "Green Meadows",
+        "locality": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6146,
+        "rent": 38000,
+        "bedrooms": 2,
+        "furnishing": "semi-furnished",
+        "amenities": ["parking", "balcony"],
+        "sqft": 1100,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    },
+    {
+      "id": 2,
+      "sessionId": "sess-1",
+      "listingId": 2,
+      "status": "active",
+      "reason": "Good bedrooms but pricier",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 2,
+        "sourceUrl": "https://bengaluru.rent/listing/2",
+        "societyName": "Skyline Residency",
+        "locality": "Koramangala",
+        "lat": 12.936,
+        "lng": 77.615,
+        "rent": 45000,
+        "bedrooms": 2,
+        "furnishing": "furnished",
+        "amenities": ["parking"],
+        "sqft": 1150,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    },
+    {
+      "id": 4,
+      "sessionId": "sess-1",
+      "listingId": 4,
+      "status": "active",
+      "reason": "Cheapest option with parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 4,
+        "sourceUrl": "https://bengaluru.rent/listing/4",
+        "societyName": "Palm Court",
+        "locality": "Koramangala",
+        "lat": 12.934,
+        "lng": 77.613,
+        "rent": 37000,
+        "bedrooms": 2,
+        "furnishing": "unfurnished",
+        "amenities": ["parking"],
+        "sqft": 1000,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "afterItems": [
+    {
+      "id": 1,
+      "sessionId": "sess-1",
+      "listingId": 1,
+      "status": "active",
+      "reason": "Within budget and has parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 1,
+        "sourceUrl": "https://bengaluru.rent/listing/1",
+        "societyName": "Green Meadows",
+        "locality": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6146,
+        "rent": 38000,
+        "bedrooms": 2,
+        "furnishing": "semi-furnished",
+        "amenities": ["parking", "balcony"],
+        "sqft": 1100,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    },
+    {
+      "id": 2,
+      "sessionId": "sess-1",
+      "listingId": 2,
+      "status": "dropped",
+      "reason": "Rent 45000 exceeds the 40000 filter",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 2,
+        "sourceUrl": "https://bengaluru.rent/listing/2",
+        "societyName": "Skyline Residency",
+        "locality": "Koramangala",
+        "lat": 12.936,
+        "lng": 77.615,
+        "rent": 45000,
+        "bedrooms": 2,
+        "furnishing": "furnished",
+        "amenities": ["parking"],
+        "sqft": 1150,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    },
+    {
+      "id": 4,
+      "sessionId": "sess-1",
+      "listingId": 4,
+      "status": "dropped",
+      "reason": "Rent 45000 exceeds the 40000 filter",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 4,
+        "sourceUrl": "https://bengaluru.rent/listing/4",
+        "societyName": "Palm Court",
+        "locality": "Koramangala",
+        "lat": 12.934,
+        "lng": 77.613,
+        "rent": 37000,
+        "bedrooms": 2,
+        "furnishing": "unfurnished",
+        "amenities": ["parking"],
+        "sqft": 1000,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "editLogEntry": {
+    "input": { "op": "filter", "field": "rent", "comparator": "<=", "value": 40000 },
+    "output": { "changed": [2, 4], "unchanged": [1] }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "shortlistItems": [
+    {
+      "id": 1,
+      "sessionId": "sess-1",
+      "listingId": 1,
+      "status": "active",
+      "reason": "Within budget and has parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 1,
+        "sourceUrl": "https://bengaluru.rent/listing/1",
+        "societyName": "Green Meadows",
+        "locality": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6146,
+        "rent": 38000,
+        "bedrooms": 2,
+        "furnishing": "semi-furnished",
+        "amenities": ["parking", "balcony"],
+        "sqft": 1100,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "transcript": [
+    { "role": "user", "content": "Is HSR Layout safe at night?" },
+    { "role": "assistant", "content": "HSR Layout is generally a very safe and quiet area at night with well-maintained parks." }
+  ]
+}

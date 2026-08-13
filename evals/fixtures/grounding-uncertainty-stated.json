@@ -1,0 +1,34 @@
+{
+  "shortlistItems": [
+    {
+      "id": 1,
+      "sessionId": "sess-1",
+      "listingId": 1,
+      "status": "active",
+      "reason": "Within budget and has parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 1,
+        "sourceUrl": "https://bengaluru.rent/listing/1",
+        "societyName": "Green Meadows",
+        "locality": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6146,
+        "rent": 38000,
+        "bedrooms": 2,
+        "furnishing": "semi-furnished",
+        "amenities": ["parking", "balcony"],
+        "sqft": 1100,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "transcript": [
+    { "role": "user", "content": "What's the crime rate like immediately around Green Meadows?" },
+    {
+      "role": "assistant",
+      "content": "I don't have reliable data on hyper-local crime statistics for this specific street, so I can't confirm that with confidence. At a broader locality level Koramangala is generally considered safe, but I would treat the building-specific claim as uncertain."
+    }
+  ]
+}

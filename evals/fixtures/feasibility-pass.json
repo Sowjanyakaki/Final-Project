@@ -1,0 +1,71 @@
+{
+  "session": {
+    "id": "sess-1",
+    "createdAt": "2026-08-01T10:00:00.000Z",
+    "status": "active",
+    "constraints": {
+      "budgetMax": 40000,
+      "bedrooms": 2,
+      "mustHaves": ["parking"],
+      "commutePoint": "Koramangala"
+    }
+  },
+  "shortlistItems": [
+    {
+      "id": 1,
+      "sessionId": "sess-1",
+      "listingId": 1,
+      "status": "active",
+      "reason": "Within budget, right bedroom count, has parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 1,
+        "sourceUrl": "https://bengaluru.rent/listing/1",
+        "societyName": "Green Meadows",
+        "locality": "Koramangala",
+        "lat": 12.9352,
+        "lng": 77.6146,
+        "rent": 38000,
+        "bedrooms": 2,
+        "furnishing": "semi-furnished",
+        "amenities": ["parking", "balcony"],
+        "sqft": 1100,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    },
+    {
+      "id": 4,
+      "sessionId": "sess-1",
+      "listingId": 4,
+      "status": "active",
+      "reason": "Cheapest option with parking",
+      "addedAt": "2026-08-01T10:05:00.000Z",
+      "listing": {
+        "id": 4,
+        "sourceUrl": "https://bengaluru.rent/listing/4",
+        "societyName": "Palm Court",
+        "locality": "Koramangala",
+        "lat": 12.934,
+        "lng": 77.613,
+        "rent": 37000,
+        "bedrooms": 2,
+        "furnishing": "unfurnished",
+        "amenities": ["parking"],
+        "sqft": 1000,
+        "availabilityStatus": "available",
+        "scrapedAt": "2026-07-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "toolCallLog": [
+    {
+      "id": 1,
+      "sessionId": "sess-1",
+      "toolName": "osmNearby",
+      "input": { "lat": 12.9352, "lng": 77.6146, "category": "commute", "commutePoint": "Koramangala" },
+      "output": { "items": [{ "name": "Koramangala Metro Access Point", "distanceMeters": 900 }], "uncertain": false },
+      "createdAt": "2026-08-01T10:06:00.000Z"
+    }
+  ]
+}
