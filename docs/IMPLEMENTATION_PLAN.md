@@ -92,6 +92,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 - No empty-state message when a search/filter combination legitimately returns zero results (e.g. a locality genuinely not in the dataset, or a locality+bedroom combination with no matches) — the property list area just renders empty with no explanation.
 - Every search/filter change blanks the entire card list to a loading message during the refetch, rather than updating in place — functional but not the smoothest UX.
 - `SearchBar`'s real debounce-into-real-refetch path (typing → 300ms → `onChange` → `GET /api/shortlist`) is only tested as two disconnected halves (`SearchBar.test.tsx` proves debounce→callback; `app/page.test.tsx` proves callback→refetch via a stubbed `SearchBar`) — no single test exercises the real component driving a real refetch end-to-end.
+- ~~Voice replies were sometimes silently not spoken~~ — resolved: reported by the user ("sometimes there is no voice"). Two real causes, both in `components/VoiceBar.tsx` / `lib/voice/speak.ts`: (1) any agent reply over 200 chars was skipped from TTS entirely rather than spoken — since the LLM doesn't reliably keep replies under that limit despite the system prompt asking it to, this meant a large fraction of turns produced zero voice output by design, not a bug in the strict sense but a bad default; now truncated at the last sentence boundary within the limit and always spoken, full text still always renders in the UI. (2) `speechSynthesis.speak()` has a well-known Chrome bug where a stuck/interrupted prior utterance silently swallows the next `speak()` call with no error; now calls `speechSynthesis.cancel()` before every `speak()` to clear the queue first. Both TDD'd; live-verified the shorter-reply path still speaks unmodified text.
 
 ## 5. Remaining work
 
@@ -112,7 +113,7 @@ Roughly in priority order:
 ## 6. Running things locally today
 
 - `npm run dev` — companion UI: search, filters, expand/collapse, heart-remove, shortlist, `/api/agent` chat, `/api/stt` transcription, and browser-native spoken replies all work with real data/services. Mic capture itself is untested here (no real microphone in this environment).
-- `npm test` — full suite (177 tests)
+- `npm test` — full suite (179 tests)
 - `npm run scrape:listings` / `npm run ingest:docs` — refresh real data
 - `npm run eval:feasibility` / `eval:edit-correctness` / `eval:grounding` — run evals against fixtures (grounding needs `GROQ_API_KEY` in `.env`)
 - OSM MCP / Booking MCP / n8n: no persistent local instance is running by default — each was spun up temporarily for testing and torn down. See `docs/ARCHITECTURE.md` and `n8n/README.md` for how to stand them up again.

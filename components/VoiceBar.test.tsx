@@ -74,4 +74,32 @@ describe('VoiceBar', () => {
     await waitFor(() => expect(speak).toHaveBeenCalledWith('Here are 3 matching listings.'));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('always speaks something for a non-empty reply, truncating replies longer than the TTS limit instead of staying silent', async () => {
+    const blob = new Blob(['audio-bytes'], { type: 'audio/webm' });
+    stopMock.mockResolvedValue(blob);
+    const longReply =
+      'Here are 3 matching listings near Koramangala. The first has covered parking and a gym. ' +
+      'The second is unfurnished but closer to the metro station and has a lower deposit requirement overall. ' +
+      'The third is the most spacious but slightly further from the main road.';
+    expect(longReply.length).toBeGreaterThan(200);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ text: 'find a 2bhk in Koramangala' }) })
+      .mockResolvedValueOnce({ ok: true, text: async () => longReply });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VoiceBar />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+    fireEvent.click(screen.getByRole('button', { name: /stop recording/i }));
+
+    await waitFor(() => expect(screen.getByTestId('agent-reply')).toHaveTextContent(longReply));
+
+    await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+    const spokenText = vi.mocked(speak).mock.calls[0][0];
+    expect(spokenText.length).toBeGreaterThan(0);
+    expect(spokenText.length).toBeLessThanOrEqual(200);
+  });
 });

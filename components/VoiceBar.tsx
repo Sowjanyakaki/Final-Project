@@ -8,6 +8,23 @@ const TTS_MAX_CHARS = 200;
 
 type VoiceStatus = 'idle' | 'transcribing' | 'thinking' | 'error';
 
+/**
+ * Replies over TTS_MAX_CHARS used to be skipped entirely rather than
+ * spoken — since the model doesn't reliably keep replies under the limit,
+ * that made voice output silently absent on a large fraction of turns.
+ * Truncate at the last sentence boundary within the limit instead, so
+ * something is always spoken; full text still always renders in the UI.
+ */
+function truncateForSpeech(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const slice = text.slice(0, maxChars);
+  const lastSentenceEnd = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '));
+  if (lastSentenceEnd > 0) {
+    return slice.slice(0, lastSentenceEnd + 1);
+  }
+  return `${slice.trimEnd()}…`;
+}
+
 export default function VoiceBar() {
   const { start, stop } = useVoiceRecorder();
   const [recording, setRecording] = useState(false);
@@ -46,9 +63,9 @@ export default function VoiceBar() {
       setReply(replyText);
       setStatus('idle');
 
-      if (replyText.length > 0 && replyText.length <= TTS_MAX_CHARS) {
+      if (replyText.length > 0) {
         try {
-          await speak(replyText);
+          await speak(truncateForSpeech(replyText, TTS_MAX_CHARS));
         } catch {
           // Speaking the reply is a nice-to-have; a speech-synthesis failure
           // must not hide the text reply that's already rendered.
