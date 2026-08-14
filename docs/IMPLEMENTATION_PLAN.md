@@ -87,6 +87,11 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 - The search bar's locality matching is an exact match, inherited from `searchListings`'s `eq()` filter (`lib/agent/tools/searchListings.ts`) — typing a partial or differently-cased locality returns no results. Documented in the redesign plan's Global Constraints rather than silently "fixed" (would require changing shared search behavior other callers — the agent's `searchListings` tool — also depend on).
 - `GET /api/shortlist` writes DB rows (session seeding) on every read — a deliberate, minimal statefulness choice to make heart-remove persistent, not an oversight (see the redesign spec §8).
 - Chrome DevTools flags a minor accessibility advisory ("form field element should have an id or name attribute") on the `SearchBar` and `EmailShortlistButton` inputs — both already have `aria-label` (so screen readers get an accessible name), this is a browser-autofill-heuristic nit, not a WCAG violation. Pre-existing pattern on `EmailShortlistButton`; not fixed as part of the redesign since it wasn't in scope.
+- ~~`loadShortlist` had no guard against out-of-order responses~~ — resolved: a slow, superseded search/filter request could resolve after a newer one and silently overwrite fresh results with stale ones. Found by the redesign's final whole-branch review (a class of bug the pre-redesign code guarded against for unmount, but the rewrite dropped — and it matters more now that re-fetches, not just unmounts, are routine). Fixed with a request-token `useRef` guard in `app/page.tsx`; TDD test resolves two in-flight requests out of order and asserts the later one wins.
+- `handleRemove`'s optimistic UI update can, in a narrow window, be overwritten by a concurrent `loadShortlist` refetch that was already in flight before the removal's `POST` committed — e.g. the user changes a filter and immediately hearts a card before the filter's GET resolves. Not fixed: requires coordinating two independent requests (harder than the stale-response fix above, which only discards *superseded* GETs) and needs simultaneous user actions to trigger. Flagged rather than built around, per YAGNI for a prototype.
+- No empty-state message when a search/filter combination legitimately returns zero results (common given the exact-match locality limitation above) — the property list area just renders empty with no explanation.
+- Every search/filter change blanks the entire card list to a loading message during the refetch, rather than updating in place — functional but not the smoothest UX.
+- `SearchBar`'s real debounce-into-real-refetch path (typing → 300ms → `onChange` → `GET /api/shortlist`) is only tested as two disconnected halves (`SearchBar.test.tsx` proves debounce→callback; `app/page.test.tsx` proves callback→refetch via a stubbed `SearchBar`) — no single test exercises the real component driving a real refetch end-to-end.
 
 ## 5. Remaining work
 
@@ -107,7 +112,7 @@ Roughly in priority order:
 ## 6. Running things locally today
 
 - `npm run dev` — companion UI: search, filters, expand/collapse, heart-remove, shortlist, `/api/agent` chat, `/api/stt` transcription, and browser-native spoken replies all work with real data/services. Mic capture itself is untested here (no real microphone in this environment).
-- `npm test` — full suite (173 tests)
+- `npm test` — full suite (174 tests)
 - `npm run scrape:listings` / `npm run ingest:docs` — refresh real data
 - `npm run eval:feasibility` / `eval:edit-correctness` / `eval:grounding` — run evals against fixtures (grounding needs `GROQ_API_KEY` in `.env`)
 - OSM MCP / Booking MCP / n8n: no persistent local instance is running by default — each was spun up temporarily for testing and torn down. See `docs/ARCHITECTURE.md` and `n8n/README.md` for how to stand them up again.
