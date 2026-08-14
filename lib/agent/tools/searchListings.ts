@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, like, sql } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { listings } from '../../db/schema';
 
@@ -20,7 +20,11 @@ export interface ListingConstraints {
 export async function searchListings(constraints: ListingConstraints): Promise<Listing[]> {
   const conditions = [eq(listings.availabilityStatus, 'available')];
   if (constraints.locality) {
-    conditions.push(eq(listings.locality, constraints.locality));
+    // Case-insensitive substring match, not exact equality — a user typing
+    // "koramangala" or "Kora" in the UI search bar (or the voice agent
+    // extracting a locality from natural speech) should match the stored
+    // "Koramangala", not require an exact-case, exact-string hit.
+    conditions.push(like(sql`lower(${listings.locality})`, `%${constraints.locality.toLowerCase()}%`));
   }
   if (constraints.bedrooms !== undefined) {
     conditions.push(eq(listings.bedrooms, constraints.bedrooms));
