@@ -1,26 +1,66 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { eq } from 'drizzle-orm';
+import { db } from '../../../lib/db/client';
+import { shortlistItems } from '../../../lib/db/schema';
+import { getOrCreateSession } from '../../../lib/agent/session';
 import { searchListings } from '../../../lib/agent/tools/searchListings';
 import { retrieveNeighborhoodDocs } from '../../../lib/agent/tools/retrieveNeighborhoodDocs';
+import { SESSION_COOKIE_NAME } from '../agent/route';
 import type { Citation, NeighborhoodSnapshot, ShortlistApiItem } from '../../../lib/types';
 
 const SHORTLIST_LIMIT = 6;
+const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 /**
- * Real (not mocked) shortlist feed for the companion UI: pulls from the
- * actually-scraped `listings` table and grounds the safety section in the
- * actually-ingested Wikipedia chunks via retrieveNeighborhoodDocs.
- *
- * transit/amenities are marked uncertain — OSM_MCP_URL isn't configured yet
- * (docs/ARCHITECTURE.md §8), so this deliberately says "data unavailable"
- * rather than guessing, per the Grounding & Hallucination requirement.
+ * Session-aware, filterable shortlist feed for the companion UI. Seeds any
+ * newly-returned listing as an `active` shortlistItems row for the session
+ * (so POST /api/shortlist/remove has something to mutate) and excludes any
+ * listing already marked `dropped` for this session, even if it still
+ * matches the current search/filter — a heart-removed card stays removed
+ * until the session ends.
  */
-export async function GET() {
-  const results = await searchListings({});
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const locality = searchParams.get('locality') ?? undefined;
+  const bedroomsParam = searchParams.get('bedrooms');
+  const bedrooms = bedroomsParam !== null && bedroomsParam !== '' ? Number(bedroomsParam) : undefined;
+
+  const cookieStore = await cookies();
+  const { id: sessionId } = await getOrCreateSession(cookieStore.get(SESSION_COOKIE_NAME)?.value);
+
+  const results = await searchListings({
+    locality,
+    bedrooms: bedrooms !== undefined && !Number.isNaN(bedrooms) ? bedrooms : undefined,
+  });
+
+  const existingRows = (await db
+    .select({ listingId: shortlistItems.listingId, status: shortlistItems.status })
+    .from(shortlistItems)
+    .where(eq(shortlistItems.sessionId, sessionId))) as Array<{ listingId: number; status: 'active' | 'dropped' }>;
+
+  const existingIds = new Set(existingRows.map((r) => r.listingId));
+  const droppedIds = new Set(existingRows.filter((r) => r.status === 'dropped').map((r) => r.listingId));
+
+  const toSeed = results.filter((listing) => !existingIds.has(listing.id));
+  if (toSeed.length > 0) {
+    await db.insert(shortlistItems).values(
+      toSeed.map((listing) => ({
+        sessionId,
+        listingId: listing.id,
+        status: 'active' as const,
+        reason: 'Shown in Explore results',
+        addedAt: new Date(),
+      }))
+    );
+  }
+
+  const visible = results.filter((listing) => !droppedIds.has(listing.id));
 
   // Prefer listings whose locality we could resolve, so the neighborhood
   // panel has real grounded content to show in the demo.
-  const withLocality = results.filter((r) => r.locality);
-  const withoutLocality = results.filter((r) => !r.locality);
+  const withLocality = visible.filter((r) => r.locality);
+  const withoutLocality = visible.filter((r) => !r.locality);
   const top = [...withLocality, ...withoutLocality].slice(0, SHORTLIST_LIMIT);
 
   const items: ShortlistApiItem[] = await Promise.all(
@@ -60,6 +100,7 @@ export async function GET() {
           amenities: listing.amenities,
           sqft: listing.sqft ?? 0,
           availabilityStatus: listing.availabilityStatus,
+          scrapedAt: listing.scrapedAt.toISOString(),
         },
         neighborhoodSnapshot,
         citations,
@@ -67,5 +108,12 @@ export async function GET() {
     })
   );
 
-  return NextResponse.json(items);
+  const response = NextResponse.json({ sessionId, items });
+  cookieStore.set(SESSION_COOKIE_NAME, sessionId, {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'lax',
+    maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
+  });
+  return response;
 }
