@@ -12,7 +12,7 @@ The spec leaves several implementation choices open. Defaults chosen below, so w
 | Hosting | Railway (app service + Postgres + n8n, all as services in one Railway project) | User's choice — keeps app, DB, and workflow automation under one platform/billing |
 | LLM access | Groq via AI SDK's Groq provider (`@ai-sdk/groq`), default model `llama-3.3-70b-versatile` (tool-calling support required for the agent) | User-provided Groq API key; Groq's inference speed suits a voice agent where response latency matters |
 | STT | Groq-hosted Whisper (`whisper-large-v3-turbo`) via AI SDK `transcribe()` | Same provider/key as the LLM, very low latency, good accuracy |
-| TTS | Groq TTS (`playai-tts`) via AI SDK `generateSpeech()` | Keeps the whole voice pipeline on one provider; fallback to browser `SpeechSynthesis` API if quality/availability is insufficient |
+| TTS | Browser `SpeechSynthesis` API, client-side (`lib/voice/speak.ts`) | `playai-tts` was fully retired 2025-12-31; its replacement (`canopylabs/orpheus-v1-english`) is preview-only per Groq's own docs ("not for production"), and `@ai-sdk/groq` exposes no speech model factory at all. No `/api/tts` route exists — this is the fallback named below, promoted to primary |
 | Database | Postgres w/ `pgvector` extension, hosted as a Railway service | One store for listings, RAG chunks + embeddings, sessions, bookings. Railway's default Postgres image doesn't ship `pgvector` — deploy from the `pgvector/pgvector` Docker image (or `ankane/pgvector`) instead of the stock Postgres template |
 | Embeddings | Local, in-process: `@xenova/transformers` running `Xenova/all-MiniLM-L6-v2` (384-dim) | Groq has no embeddings endpoint; a local model avoids adding a third API key/provider just for RAG chunking. `neighborhood_docs.embedding` is `vector(384)` to match |
 | Testing | Vitest for all unit/component tests; external calls (Groq SDK, MCP clients, Booking MCP HTTP calls, Playwright, DB) mocked at the module boundary — no real network/API calls in the test suite | Keeps `npm test` runnable with zero credentials, which the eval/test steps in each implementation plan depend on |
@@ -38,7 +38,7 @@ The spec leaves several implementation choices open. Defaults chosen below, so w
 │                   NEXT.JS APP (Railway service, Node.js)              │
 │                                                                        │
 │  /api/stt         → Groq Whisper transcription                        │
-│  /api/tts         → Groq TTS for spoken replies                       │
+│  (no /api/tts — spoken replies via browser SpeechSynthesis, client-side)│
 │  /api/agent       → orchestrator (agent loop, tool calls, streaming)  │
 │  /api/booking     → create/confirm site-visit slot                    │
 │  /api/shortlist   → CRUD for session shortlist state                  │
@@ -125,7 +125,7 @@ The upstream `open-streetmap-mcp` server only speaks **stdio** (`osm-mcp-server`
 1. Browser records audio (MediaRecorder) on push-to-talk → blob POSTed to `/api/stt`.
 2. `/api/stt` runs Groq Whisper transcription, returns text + updates live transcript in UI.
 3. Transcript sent to `/api/agent` as the user turn; agent streams back a text response.
-4. Short spoken confirmations (e.g. "I've dropped 2 listings over ₹40k") are also sent to `/api/tts` and played back; full explanations always also render as text + citations in the UI (per spec: "voice explanations can be short; citations must appear in the UI").
+4. Short spoken confirmations (e.g. "I've dropped 2 listings over ₹40k") are spoken client-side via the browser's `SpeechSynthesis` API (`lib/voice/speak.ts`, no server round-trip); full explanations always also render as text + citations in the UI (per spec: "voice explanations can be short; citations must appear in the UI").
 
 ### 3.4 Companion UI (Next.js pages/components)
 
@@ -276,7 +276,7 @@ Secrets handling: `GROQ_API_KEY`, DB credentials, and `BOOKING_MCP_API_KEY` are 
 
 - Confirm which Bengaluru localities to scope the neighborhood RAG corpus to initially (can't realistically cover the whole city for a prototype).
 - Need a GitHub repo target to push to, and a Railway project created (app + Postgres + n8n + Booking MCP + OSM MCP services) before scripts/deploys can actually run.
-- Groq TTS (`playai-tts`) coverage/quality should be spot-checked early — if it's insufficient for natural-sounding explanations, fall back to browser `SpeechSynthesis` for output while keeping Groq for LLM + STT.
+- ~~Groq TTS (`playai-tts`) coverage/quality should be spot-checked early~~ — resolved: `playai-tts` is fully retired (shutdown 2025-12-31), its replacement is preview-only, and `@ai-sdk/groq` has no speech model factory. Voice output uses browser `SpeechSynthesis` (`lib/voice/speak.ts`); Groq is still used for LLM + STT.
 - Booking MCP's Google Calendar needs a real (or dummy/test) Google account behind it — the `python auth.py` OAuth step has to be run once locally to produce `token.json` before the Booking MCP service can be deployed with working calendar access.
 - `DAILY_SLOT_TEMPLATE` in that repo is hardcoded to 10:00/15:00 IST, 30-min slots, weekdays only — fine as a default; flag if visit slots should be configurable differently.
 - **Waiting on the OSM MCP fork's GitHub URL.** SSE-bridge approach is decided (§3.2a) — once the fork's URL is shared, add the `supergateway` bridge + Railway config to it and set `OSM_MCP_URL` in the app service.

@@ -2,13 +2,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import VoiceBar from './VoiceBar';
 import { useVoiceRecorder } from '../lib/voice/useVoiceRecorder';
-import { playAudio } from '../lib/voice/playAudio';
+import { speak } from '../lib/voice/speak';
 
 vi.mock('../lib/voice/useVoiceRecorder', () => ({
   useVoiceRecorder: vi.fn(),
 }));
-vi.mock('../lib/voice/playAudio', () => ({
-  playAudio: vi.fn(),
+vi.mock('../lib/voice/speak', () => ({
+  speak: vi.fn(),
 }));
 
 describe('VoiceBar', () => {
@@ -22,7 +22,7 @@ describe('VoiceBar', () => {
       start: startMock,
       stop: stopMock,
     });
-    vi.mocked(playAudio).mockResolvedValue(undefined);
+    vi.mocked(speak).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -42,10 +42,6 @@ describe('VoiceBar', () => {
       .mockResolvedValueOnce({
         ok: true,
         text: async () => 'Here are 3 matching listings.',
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        blob: async () => new Blob(['tts-bytes'], { type: 'audio/mpeg' }),
       });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -75,6 +71,7 @@ describe('VoiceBar', () => {
       })
     );
 
-    await waitFor(() => expect(playAudio).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(speak).toHaveBeenCalledWith('Here are 3 matching listings.'));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

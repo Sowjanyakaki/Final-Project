@@ -4,7 +4,7 @@
 
 ## 1. Overall status
 
-All 6 planned subsystems are implemented and unit-tested. Most have been **live-verified** against real data or a real (locally-run) service, not just mocks. Git is initialized and the `/api/agent` route is built and live-verified. Two concrete things are still missing before this meets the problem statement's baseline requirements: **a deployed public URL, and the `/api/stt` + `/api/tts` routes** that would let the companion UI's voice pipeline actually work end-to-end in a browser (chat via `/api/agent` already works without voice).
+All 6 planned subsystems are implemented and unit-tested. Most have been **live-verified** against real data or a real (locally-run) service, not just mocks. Git is initialized, and `/api/agent` + `/api/stt` are built and live-verified. TTS does **not** go through Groq — `playai-tts` was fully retired (shutdown 2025-12-31) and its replacement is preview-only ("not for production" per Groq's own docs), so voice output uses the browser's native `SpeechSynthesis` API per `ARCHITECTURE.md`'s own documented contingency. The one concrete thing still missing before this meets the problem statement's baseline requirements is **a deployed public URL** — the full voice pipeline (mic → STT → agent → spoken reply) now works end-to-end against real services.
 
 | Subsystem | Built | Unit-tested | Live-verified |
 |---|---|---|---|
@@ -15,7 +15,8 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 | Evaluation suite | ✅ | ✅ | ✅ all 3 evals run live against fixtures; grounding's LLM judge caught a real hallucination |
 | n8n-notify | ✅ | ✅ | ✅ `/api/notify` tested against a real DB session + stand-in webhook |
 | **`/api/agent` route** | ✅ | ✅ (5 tests) | ✅ real `next dev` + real Groq key: shortlist search, follow-up edit, and session-cookie reuse all confirmed over HTTP |
-| **Voice pipeline (STT/TTS routes)** | ⚠️ partial | ✅ (mocked) | ❌ `/api/stt`, `/api/tts` don't exist |
+| **`/api/stt` route** | ✅ | ✅ (4 tests) | ✅ real `next dev` + real Groq key: a synthesized speech WAV was transcribed correctly end-to-end |
+| **Voice output (TTS)** | ✅ (browser `SpeechSynthesis`, not a server route) | ✅ (3 tests) | ✅ real Chrome: `speechSynthesis`/`SpeechSynthesisUtterance` API surface confirmed to match `lib/voice/speak.ts`'s assumptions |
 | **Git / version control** | ✅ | — | — repo initialized, commits on `main` |
 | **Deployment** | ❌ | — | — nothing deployed; everything run locally |
 
@@ -38,7 +39,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 
 ### Companion UI — `app/`, `components/`, `lib/voice/`
 - `ShortlistCard`, `NeighborhoodPanel`, `SourcesPanel`, `BookingPanel`, `VoiceBar`, `EmailShortlistButton`, composed in `app/page.tsx`.
-- Filled a gap the plan assumed was pre-built: real `lib/voice/useVoiceRecorder.ts` (MediaRecorder-based push-to-talk) and `playAudio.ts`.
+- Filled a gap the plan assumed was pre-built: real `lib/voice/useVoiceRecorder.ts` (MediaRecorder-based push-to-talk) and `speak.ts` (see §2 below for why this is `SpeechSynthesis`-based rather than a `playAudio.ts`/`/api/tts` blob-playback pair).
 - Added a real `GET /api/shortlist` route (beyond the plan's mocked-only scope) so the UI shows actual scraped listings + actual grounded safety claims + honest "data unavailable" for ungrounded categories.
 - **Live-verified in a real browser**: real listings, real citations, correct uncertainty states, working mic button UI (recording itself untested — no real mic in this environment).
 
@@ -52,6 +53,16 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 - Session identity is a new `nextleap_session` httpOnly cookie (read via `next/headers`'s `cookies()`), since no route previously wired one up — `getOrCreateSession` existed but was untested-in-production until now.
 - **Live-verified**: real `next dev` + real Groq key — a shortlist search request returned a real grounded reply citing an actual DB listing, a follow-up "drop anything above 30000" on the same session cookie correctly triggered `applyShortlistEdit`, and both 400 error paths (empty message, invalid JSON) behave as expected.
 - Message history is single-turn only (no `messages` table exists yet to persist prior turns per session) — each request is `[{ role: 'user', content: message }]`. Multi-turn context within one voice exchange still works via the agent's own tool-call loop; cross-request conversational memory is a known gap, not silently papered over.
+
+### `/api/stt` route — `app/api/stt/route.ts`
+- Reads a multipart `audio` field from the POST body, transcribes it via the AI SDK's `transcribe()` against `groq.transcription('whisper-large-v3-turbo')`, returns `{ text }` — matching the contract `components/VoiceBar.tsx` already expected.
+- **Live-verified**: real `next dev` + real Groq key — synthesized a real speech WAV locally (Windows SAPI) saying "Find a two bedroom apartment in Koramangala under forty thousand rupees" and posted it to the running route; Groq Whisper transcribed it correctly (numbers and structure exact; a phonetic near-miss on "Koramangala" — expected Whisper behavior, not a bug). Also fixed a real bug found live: an empty/non-multipart body threw inside `request.formData()` uncaught, returning a bare 500 instead of a 400 — now caught and returns `{ error }` with 400.
+
+### Voice output (TTS) — `lib/voice/speak.ts`, not a route
+- `ARCHITECTURE.md` specifies Groq TTS (`playai-tts`) with browser `SpeechSynthesis` as an explicit fallback "if quality/availability is insufficient." Checked against Groq's current docs: `playai-tts` and `playai-tts-arabic` were **fully shut down 2025-12-31**; the replacement (`canopylabs/orpheus-v1-english`) is a preview model Groq's own docs mark "intended for evaluation purposes only... may be discontinued without notice." Also, `@ai-sdk/groq` (installed `4.0.26`) exposes no `.speech()`/TTS model factory at all — only `.transcription()`.
+- Given that, went with the documented fallback rather than building against a model Groq itself says not to use in production: `components/VoiceBar.tsx` now calls `speak(replyText)` (browser `SpeechSynthesisUtterance`) directly instead of POSTing to a (removed) `/api/tts` route. No server round-trip for voice output.
+- Removed `lib/voice/playAudio.ts` (dead code once nothing POSTs to `/api/tts` for a blob to play back).
+- **Live-verified**: loaded the real companion UI in Chrome and confirmed `window.speechSynthesis`, `SpeechSynthesisUtterance`, and its `onend`/`onerror` handlers all exist and match what `speak.ts` assumes; no app-caused console errors. Actually *hearing* speech and the mic-to-transcript flow remain unverified in this headless-adjacent environment (no real microphone/audio output here), consistent with the companion UI's existing "recording itself untested" limitation.
 
 ### n8n-notify — `app/api/notify/`, `components/EmailShortlistButton.tsx`, `n8n/`
 - Found and fixed two real bugs in the plan's own given test code (a Vitest hoisting/TDZ bug, and a test race condition on the loading state).
@@ -79,7 +90,8 @@ Roughly in priority order:
 
 - [x] Initialize git, make an initial commit — done; repo is on `main` with several commits.
 - [x] Build `app/api/agent/route.ts` — done, tested, and live-verified (see §2 above).
-- [ ] Build `/api/stt` and `/api/tts` — Groq Whisper transcription and Groq TTS (or a browser `SpeechSynthesis` fallback per `ARCHITECTURE.md`'s contingency). Not started at all; only the client-side recorder/player hooks exist.
+- [x] Build `/api/stt` — done, tested, and live-verified (see §2 above).
+- [x] Voice output — done via browser `SpeechSynthesis` per `ARCHITECTURE.md`'s documented fallback (`playai-tts` is fully retired; its replacement is preview-only). No `/api/tts` route exists by design — see §2 above. Update `ARCHITECTURE.md` §1/§2/§3.3 to reflect this if/when convenient (currently still describes a Groq-TTS `/api/tts` route).
 - [ ] Deploy: Railway project with the app service, Postgres (or keep SQLite for the demo — flag this decision explicitly if sticking with SQLite in production), the OSM MCP bridge (as `mcp-proxy`, not `supergateway`), the Booking MCP service, and an n8n service. Required by the problem statement ("Deployed prototype (public URL)").
 - [ ] Complete Google Calendar OAuth for the Booking MCP (`python auth.py`, needs your Google account) so booking actually works end-to-end.
 - [ ] Import `n8n/shortlist-to-pdf-email.json` into a real n8n instance and configure real SMTP credentials.
@@ -90,8 +102,8 @@ Roughly in priority order:
 
 ## 6. Running things locally today
 
-- `npm run dev` — companion UI (shortlist and `/api/agent` chat work with real data; voice specifically will 404 until `/api/stt` and `/api/tts` exist)
-- `npm test` — full suite (113 tests)
+- `npm run dev` — companion UI: shortlist, `/api/agent` chat, `/api/stt` transcription, and browser-native spoken replies all work with real data/services. Mic capture itself is untested here (no real microphone in this environment).
+- `npm test` — full suite (128 tests)
 - `npm run scrape:listings` / `npm run ingest:docs` — refresh real data
 - `npm run eval:feasibility` / `eval:edit-correctness` / `eval:grounding` — run evals against fixtures (grounding needs `GROQ_API_KEY` in `.env`)
 - OSM MCP / Booking MCP / n8n: no persistent local instance is running by default — each was spun up temporarily for testing and torn down. See `docs/ARCHITECTURE.md` and `n8n/README.md` for how to stand them up again.

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useVoiceRecorder } from '../lib/voice/useVoiceRecorder';
-import { playAudio } from '../lib/voice/playAudio';
+import { speak } from '../lib/voice/speak';
 
 const TTS_MAX_CHARS = 200;
 
@@ -48,18 +48,10 @@ export default function VoiceBar() {
 
       if (replyText.length > 0 && replyText.length <= TTS_MAX_CHARS) {
         try {
-          const ttsRes = await fetch('/api/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: replyText }),
-          });
-          if (ttsRes.ok) {
-            const audioBlob = await ttsRes.blob();
-            await playAudio(audioBlob);
-          }
+          await speak(replyText);
         } catch {
-          // Speaking the reply is a nice-to-have; a TTS/playback failure must not
-          // hide the text reply that's already rendered.
+          // Speaking the reply is a nice-to-have; a speech-synthesis failure
+          // must not hide the text reply that's already rendered.
         }
       }
     } catch {

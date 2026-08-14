@@ -6,9 +6,6 @@ import { useVoiceRecorder } from '../lib/voice/useVoiceRecorder';
 vi.mock('../lib/voice/useVoiceRecorder', () => ({
   useVoiceRecorder: vi.fn(),
 }));
-vi.mock('../lib/voice/playAudio', () => ({
-  playAudio: vi.fn(),
-}));
 
 const fixtureItems = [
   {
