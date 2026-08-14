@@ -1,0 +1,28 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 22, 31, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 30;
+}
+
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-5) var(--space-4);
+}
+
+.closeButton {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+}
