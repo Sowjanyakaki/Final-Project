@@ -9,7 +9,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 | Subsystem | Built | Unit-tested | Live-verified |
 |---|---|---|---|
 | Data ingestion (scraper + RAG ingest) | ✅ | ✅ | ✅ 187 real listings, 6 real Wikipedia chunks |
-| MCP integrations (`lib/agent/tools/*`) | ✅ | ✅ (20 tests) | ✅ OSM MCP + Booking MCP both tested against real local servers |
+| MCP integrations (`lib/agent/tools/*`) | ✅ | ✅ (22 tests) | ✅ OSM MCP tested against the real **deployed** Railway service (streamable HTTP); Booking MCP tested against a real local server |
 | Orchestration agent | ✅ | ✅ | ✅ real multi-step Groq conversation, tool calls, grounding/uncertainty behavior |
 | Companion UI | ✅ | ✅ | ✅ real data rendered in a real browser (`next dev`) |
 | Evaluation suite | ✅ | ✅ | ✅ all 3 evals run live against fixtures; grounding's LLM judge caught a real hallucination |
@@ -18,7 +18,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 | **`/api/stt` route** | ✅ | ✅ (4 tests) | ✅ real `next dev` + real Groq key: a synthesized speech WAV was transcribed correctly end-to-end |
 | **Voice output (TTS)** | ✅ (browser `SpeechSynthesis`, not a server route) | ✅ (3 tests) | ✅ real Chrome: `speechSynthesis`/`SpeechSynthesisUtterance` API surface confirmed to match `lib/voice/speak.ts`'s assumptions |
 | **Git / version control** | ✅ | — | — repo initialized, commits on `main` |
-| **Deployment** | ❌ | — | — nothing deployed; everything run locally |
+| **Deployment** | ⚠️ partial | — | OSM MCP is deployed to Railway and live; the app itself, Booking MCP, and n8n are still local-only |
 
 ## 2. What's built and verified, subsystem by subsystem
 
@@ -74,7 +74,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 | Integration | Local test status | What's blocking full production use |
 |---|---|---|
 | **Groq** (`GROQ_API_KEY`) | ✅ Real key, live-tested, working | Nothing — this one's ready |
-| **OSM MCP** | ✅ Stood up locally (your fork + `mcp-proxy` bridge), 3 bugs fixed in our code, 1 fixed in the fork (uncommitted) | Needs a real Railway deployment of the bridge; `ARCHITECTURE.md` §3.2a still says `supergateway`, which is confirmed broken (crashes on a 2nd connection) — needs updating to `mcp-proxy` |
+| **OSM MCP** | ✅ Deployed to Railway and live-verified: real `initialize` handshake + real nearby-places data for a Koramangala coordinate | Nothing — this one's ready. Turned out to need no bridge at all: the fork runs FastMCP's `streamable-http` transport natively (see `docs/ARCHITECTURE.md` §3.2a); fixed a real mismatch where our client was configured for SSE at the URL root instead of HTTP at `/mcp` |
 | **Booking MCP** | ✅ Stood up locally, full HTTP/auth layer confirmed correct | Needs real Google Calendar OAuth (`credentials.json` + `python auth.py`, blocked on your Google Cloud Console setup) before `list_slots`/`create_hold` return real data |
 | **n8n** | ✅ Tested against a stand-in webhook | No real n8n instance exists yet; needs Railway provisioning + workflow import per `n8n/README.md` |
 
@@ -92,10 +92,10 @@ Roughly in priority order:
 - [x] Build `app/api/agent/route.ts` — done, tested, and live-verified (see §2 above).
 - [x] Build `/api/stt` — done, tested, and live-verified (see §2 above).
 - [x] Voice output — done via browser `SpeechSynthesis` per `ARCHITECTURE.md`'s documented fallback (`playai-tts` is fully retired; its replacement is preview-only). No `/api/tts` route exists by design — see §2 above. Update `ARCHITECTURE.md` §1/§2/§3.3 to reflect this if/when convenient (currently still describes a Groq-TTS `/api/tts` route).
-- [ ] Deploy: Railway project with the app service, Postgres (or keep SQLite for the demo — flag this decision explicitly if sticking with SQLite in production), the OSM MCP bridge (as `mcp-proxy`, not `supergateway`), the Booking MCP service, and an n8n service. Required by the problem statement ("Deployed prototype (public URL)").
+- [x] OSM MCP deployment — done; fork deployed to Railway running natively over streamable HTTP, `OSM_MCP_URL` set, live-verified (see §3 above and `docs/ARCHITECTURE.md` §3.2a).
+- [ ] Deploy the app itself: Railway project with the app service, Postgres (or keep SQLite for the demo — flag this decision explicitly if sticking with SQLite in production), the Booking MCP service, and an n8n service. OSM MCP is already deployed and just needs `OSM_MCP_URL` set on the app service too. Required by the problem statement ("Deployed prototype (public URL)").
 - [ ] Complete Google Calendar OAuth for the Booking MCP (`python auth.py`, needs your Google account) so booking actually works end-to-end.
 - [ ] Import `n8n/shortlist-to-pdf-email.json` into a real n8n instance and configure real SMTP credentials.
-- [ ] Update `docs/ARCHITECTURE.md` §3.2a to say `mcp-proxy` instead of `supergateway`.
 - [ ] Commit the pending fix in the OSM MCP fork (`D:\NextLeap\OpenStreetMap_MCP`, `server.py` — missing `User-Agent` headers) — that's a separate repo, needs a decision/commit from you.
 - [ ] Decide whether to fix the `commute`-category interface gap (two-point support) or leave it as a documented limitation.
 - [ ] Optional: visual styling for the companion UI (currently unstyled by design, matching the given plan).

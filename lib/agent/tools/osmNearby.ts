@@ -161,12 +161,19 @@ function normalizeRawResult(toolName: string, raw: unknown): OsmNearbyResult['it
 }
 
 /**
- * Wraps the OpenStreetMap MCP server (connected over SSE — see
- * docs/ARCHITECTURE.md §3.2a) as a single normalized lookup. Never throws:
- * any missing config, missing tool, empty result, or upstream failure comes
- * back as `{ items: [], uncertain: true, note }` so the agent's system
- * prompt can enforce "state uncertainty, never guess" without a try/catch
- * at every call site.
+ * Wraps the OpenStreetMap MCP server (connected over streamable HTTP at
+ * `/mcp` — see docs/ARCHITECTURE.md §3.2a) as a single normalized lookup.
+ * Never throws: any missing config, missing tool, empty result, or upstream
+ * failure comes back as `{ items: [], uncertain: true, note }` so the
+ * agent's system prompt can enforce "state uncertainty, never guess"
+ * without a try/catch at every call site.
+ *
+ * The deployed fork (D:\NextLeap\OpenStreetMap_MCP, __init__.py) runs the
+ * official `mcp` Python SDK's FastMCP with `transport="streamable-http"`
+ * when Railway's PORT env var is present — not SSE behind a supergateway/
+ * mcp-proxy bridge as originally planned. Confirmed live: a bare SSE
+ * connection to the URL's root 404s; a streamable-HTTP POST to `/mcp`
+ * returns a real `initialize` response.
  */
 export async function osmNearby(input: OsmNearbyInput): Promise<OsmNearbyResult> {
   const url = process.env.OSM_MCP_URL;
@@ -177,7 +184,7 @@ export async function osmNearby(input: OsmNearbyInput): Promise<OsmNearbyResult>
   let client: Awaited<ReturnType<typeof createMCPClient>> | undefined;
   try {
     client = await createMCPClient({
-      transport: { type: 'sse', url },
+      transport: { type: 'http', url: `${url.replace(/\/$/, '')}/mcp` },
     });
 
     const tools = await client.tools();

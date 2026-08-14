@@ -105,20 +105,15 @@ The agent's system prompt enforces:
 
 Session state (constraints, current shortlist, conversation history, tool-call log) persisted in `sessions` table, keyed by a session id set in a cookie — no auth required for MVP.
 
-### 3.2a OSM MCP transport: SSE bridge (decided)
+### 3.2a OSM MCP transport: native streamable HTTP (decided, live)
 
-The upstream `open-streetmap-mcp` server only speaks **stdio** (`osm-mcp-server` reads/writes on standard input/output) — it has no built-in HTTP/SSE mode and ships no Dockerfile/Railway config, unlike the Booking MCP's plain REST API. That means it can't be pointed at directly as a public Railway URL the way the Booking MCP can.
+The upstream `open-streetmap-mcp` server only speaks **stdio** by default — no built-in HTTP/SSE mode, no Dockerfile/Railway config. The originally-planned stdio→SSE bridge (`supergateway`/`mcp-proxy`) turned out unnecessary: the user's fork (`D:\NextLeap\OpenStreetMap_MCP`, `src/osm_mcp_server/__init__.py`) was instead modified to run the official `mcp` Python SDK's `FastMCP` with `transport="streamable-http"` directly whenever Railway's `PORT` env var is present, falling back to stdio for local MCP hosts (Claude Desktop, Cursor). No bridge process, no dual Node+Python container — just the one Python service, `EXPOSE 8000`, `CMD ["osm-mcp-server"]`.
 
-**Decision: wrap it with an stdio→SSE bridge**, deployed as its own Railway service, matching the decoupled-service pattern used for the Booking MCP:
+- The streamable-HTTP endpoint is mounted at `/mcp` (the `mcp` SDK's default `streamable_http_path`), not at the service root.
+- The app connects via `@ai-sdk/mcp`'s `createMCPClient({ transport: { type: 'http', url } })` (see `lib/agent/tools/osmNearby.ts`) — `OSM_MCP_URL` in `.env`/Railway holds the base URL (same convention as `BOOKING_MCP_URL`); the code appends `/mcp`.
+- **Live-verified**: a raw `curl -X POST .../mcp` with an `initialize` request against the deployed Railway service returns a real MCP handshake (`serverInfo: "Location-Based App MCP Server"`), and `osmNearby({ lat: 12.9352, lng: 77.6146, category: 'amenities' })` returns real nearby places (restaurants, banks, cafes) from the real OSM data.
 
-- In the user's forked repo, add a small bridge process using `supergateway` (or `mcp-proxy`) that spawns `osm-mcp-server` over stdio and re-exposes it as SSE, e.g.:
-  ```bash
-  npx supergateway --stdio "uvx osm-mcp-server" --port $PORT
-  ```
-- Add a `railway.toml`/Dockerfile to that fork so Railway can build and run the bridge (needs both Node — for `supergateway`/`npx` — and Python/`uv` — for `osm-mcp-server` — in the same container).
-- The app connects via AI SDK's `experimental_createMCPClient({ transport: { type: 'sse', url: OSM_MCP_URL } })`.
-
-`osmNearby` in the orchestration layer is written against the MCP client interface, so this is purely a deployment/config concern for the forked repo — no app-code changes needed once `OSM_MCP_URL` points at the bridge's Railway URL.
+`osmNearby` in the orchestration layer is written against the MCP client interface, so this was a small, localized fix (transport type + URL path) once the real deployment shape was known — no changes needed elsewhere in the orchestration layer.
 
 ### 3.3 Voice Pipeline
 
@@ -267,7 +262,7 @@ All on **Railway**, as separate services inside one Railway project:
 - **Database service**: Postgres deployed from a `pgvector`-enabled image (not Railway's stock Postgres template), so `CREATE EXTENSION vector;` works out of the box.
 - **n8n service**: deployed from Railway's official n8n template; exposes its own public URL, which becomes `N8N_WEBHOOK_URL` in the app service.
 - **Booking MCP service**: [Sowjanyakaki/MCP-server](https://github.com/Sowjanyakaki/MCP-server) deployed from its own repo using the `railway.toml` it already ships (`uvicorn server:app --host 0.0.0.0 --port $PORT`). Needs its own env vars set on that service: `API_SECRET_KEY` (shared secret our app sends as `X-API-Key`), `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_TOKEN_JSON` (base64/JSON-string OAuth creds with the `calendar.events` scope — generated locally via `python auth.py` and copied in), optionally `CALENDAR_ID`.
-- **OSM MCP service**: user's fork of `open-streetmap-mcp`, wrapped with an stdio→SSE bridge (`supergateway`/`mcp-proxy`) and deployed as its own Railway service (see §3.2a). URL becomes `OSM_MCP_URL` in the app service. Pending the fork's GitHub URL.
+- **OSM MCP service**: user's fork of `open-streetmap-mcp`, deployed as its own Railway service, running natively over streamable HTTP (see §3.2a — no bridge process). URL becomes `OSM_MCP_URL` in the app service. **Done** — deployed and live-verified.
 - **Scraper/ingestion scripts**: run locally against the Railway Postgres's public connection string (not part of the request path); output lands in the same DB the deployed app reads from.
 
 Secrets handling: `GROQ_API_KEY`, DB credentials, and `BOOKING_MCP_API_KEY` are set directly as Railway service environment variables (and in a local `.env.local`, gitignored) — never committed to the repo or pasted into chat/logs.
@@ -279,7 +274,7 @@ Secrets handling: `GROQ_API_KEY`, DB credentials, and `BOOKING_MCP_API_KEY` are 
 - ~~Groq TTS (`playai-tts`) coverage/quality should be spot-checked early~~ — resolved: `playai-tts` is fully retired (shutdown 2025-12-31), its replacement is preview-only, and `@ai-sdk/groq` has no speech model factory. Voice output uses browser `SpeechSynthesis` (`lib/voice/speak.ts`); Groq is still used for LLM + STT.
 - Booking MCP's Google Calendar needs a real (or dummy/test) Google account behind it — the `python auth.py` OAuth step has to be run once locally to produce `token.json` before the Booking MCP service can be deployed with working calendar access.
 - `DAILY_SLOT_TEMPLATE` in that repo is hardcoded to 10:00/15:00 IST, 30-min slots, weekdays only — fine as a default; flag if visit slots should be configurable differently.
-- **Waiting on the OSM MCP fork's GitHub URL.** SSE-bridge approach is decided (§3.2a) — once the fork's URL is shared, add the `supergateway` bridge + Railway config to it and set `OSM_MCP_URL` in the app service.
+- ~~Waiting on the OSM MCP fork's GitHub URL~~ — resolved: fork deployed to Railway, running natively over streamable HTTP (§3.2a), `OSM_MCP_URL` set and live-verified.
 
 ---
 

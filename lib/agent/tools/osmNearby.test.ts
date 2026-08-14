@@ -11,7 +11,34 @@ const mockCreateClient = vi.mocked(createMCPClient);
 describe('osmNearby', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OSM_MCP_URL = 'https://osm-mcp.example.com/sse';
+    process.env.OSM_MCP_URL = 'https://osm-mcp.example.com';
+  });
+
+  it('connects over streamable HTTP at the /mcp path, not SSE', async () => {
+    mockCreateClient.mockResolvedValue({
+      tools: vi.fn().mockResolvedValue({ find_nearby_places: { execute: vi.fn().mockResolvedValue({ categories: {} }) } }),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    await osmNearby({ lat: 12.93, lng: 77.61, category: 'amenities' });
+
+    expect(mockCreateClient).toHaveBeenCalledWith({
+      transport: { type: 'http', url: 'https://osm-mcp.example.com/mcp' },
+    });
+  });
+
+  it('does not double up the /mcp path when OSM_MCP_URL already has a trailing slash', async () => {
+    process.env.OSM_MCP_URL = 'https://osm-mcp.example.com/';
+    mockCreateClient.mockResolvedValue({
+      tools: vi.fn().mockResolvedValue({ find_nearby_places: { execute: vi.fn().mockResolvedValue({ categories: {} }) } }),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never);
+
+    await osmNearby({ lat: 12.93, lng: 77.61, category: 'amenities' });
+
+    expect(mockCreateClient).toHaveBeenCalledWith({
+      transport: { type: 'http', url: 'https://osm-mcp.example.com/mcp' },
+    });
   });
 
   it('calls find_nearby_places for an "amenities" category and unwraps + flattens the real CallToolResult envelope', async () => {
