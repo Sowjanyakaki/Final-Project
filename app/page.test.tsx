@@ -144,4 +144,39 @@ describe('Home (companion UI shell)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'AI Scout' }));
     expect(screen.getByTestId('voice-sheet')).toBeInTheDocument();
   });
+
+  it('discards a stale response when an earlier request resolves after a newer one', async () => {
+    render(<Home />);
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
+
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondPromise = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    // First fetch triggered (stale, will resolve LAST): search-stub -> locality=Koramangala
+    fetchMock.mockImplementationOnce(() => firstPromise);
+    // Second fetch triggered (current, will resolve FIRST): filter-stub -> bedrooms=2
+    fetchMock.mockImplementationOnce(() => secondPromise);
+
+    fireEvent.click(screen.getByTestId('search-stub'));
+    fireEvent.click(screen.getByTestId('filter-stub'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    // The SECOND (current) request resolves first with fresh results.
+    resolveSecond(jsonResponse({ sessionId: 'sess-fresh', items: [fixtureItems[1]] }));
+    await waitFor(() => expect(screen.getByText('Sobha Dream Acres, HSR Layout')).toBeInTheDocument());
+
+    // The FIRST (now-stale) request resolves after it - it must be discarded.
+    resolveFirst(jsonResponse({ sessionId: 'sess-stale', items: [fixtureItems[0]] }));
+
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(1));
+    expect(screen.getByText('Sobha Dream Acres, HSR Layout')).toBeInTheDocument();
+    expect(screen.queryByText('Prestige Falcon City, Koramangala')).not.toBeInTheDocument();
+  });
 });

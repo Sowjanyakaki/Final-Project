@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Header from '../components/Header';
 import Hero from '../components/Hero';
 import SearchBar from '../components/SearchBar';
@@ -23,7 +23,10 @@ export default function Home() {
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [booking] = useState<Booking | undefined>(undefined);
 
+  const latestRequestRef = useRef(0);
+
   const loadShortlist = useCallback(async (nextLocality: string, nextBedrooms: number | undefined) => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -34,12 +37,19 @@ export default function Home() {
       const res = await fetch(`/api/shortlist${query ? `?${query}` : ''}`);
       if (!res.ok) throw new Error('failed to load shortlist');
       const data: ShortlistApiResponse = await res.json();
+      // Ignore this response if a newer request has started since — otherwise
+      // a slow, superseded request (e.g. an earlier search keystroke) could
+      // resolve after the current one and overwrite it with stale results.
+      if (latestRequestRef.current !== requestId) return;
       setSessionId(data.sessionId);
       setItems(data.items);
     } catch {
+      if (latestRequestRef.current !== requestId) return;
       setError('Could not load your shortlist. Try again shortly.');
     } finally {
-      setLoading(false);
+      if (latestRequestRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, []);
 
