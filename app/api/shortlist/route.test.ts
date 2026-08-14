@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { mockGetOrCreateSession } = vi.hoisted(() => ({ mockGetOrCreateSession: vi.fn() }));
 const { mockSearchListings } = vi.hoisted(() => ({ mockSearchListings: vi.fn() }));
 const { mockRetrieveNeighborhoodDocs } = vi.hoisted(() => ({ mockRetrieveNeighborhoodDocs: vi.fn() }));
+const { mockOsmNearby } = vi.hoisted(() => ({ mockOsmNearby: vi.fn() }));
 const { mockCookieGet, mockCookieSet, mockCookies } = vi.hoisted(() => {
   const mockCookieGet = vi.fn();
   const mockCookieSet = vi.fn();
@@ -24,6 +25,7 @@ vi.mock('../../../lib/agent/tools/searchListings', () => ({ searchListings: mock
 vi.mock('../../../lib/agent/tools/retrieveNeighborhoodDocs', () => ({
   retrieveNeighborhoodDocs: mockRetrieveNeighborhoodDocs,
 }));
+vi.mock('../../../lib/agent/tools/osmNearby', () => ({ osmNearby: mockOsmNearby }));
 vi.mock('next/headers', () => ({ cookies: mockCookies }));
 
 import { GET } from './route';
@@ -56,6 +58,7 @@ describe('GET /api/shortlist', () => {
     mockGetOrCreateSession.mockResolvedValue({ id: 'sess-1', isNew: true });
     mockSearchListings.mockResolvedValue([listingRow]);
     mockRetrieveNeighborhoodDocs.mockResolvedValue({ chunks: [], uncertain: true });
+    mockOsmNearby.mockResolvedValue({ items: [], uncertain: true });
     mockWhere.mockResolvedValue([]);
     mockSelect.mockReturnValue({ from: mockFrom });
     mockFrom.mockReturnValue({ where: mockWhere });
@@ -111,5 +114,49 @@ describe('GET /api/shortlist', () => {
 
     expect(mockGetOrCreateSession).toHaveBeenCalledWith('sess-existing');
     expect(json.sessionId).toBe('sess-existing');
+  });
+
+  it('includes real transit and amenities data from osmNearby for a listing with coordinates', async () => {
+    mockOsmNearby.mockImplementation(({ category }: { category: string }) => {
+      if (category === 'transit') {
+        return Promise.resolve({
+          items: [{ name: 'Koramangala Metro', type: 'public_transport/station', distanceMeters: 420 }],
+          uncertain: false,
+        });
+      }
+      return Promise.resolve({
+        items: [{ name: 'Forum Mall', type: 'amenity/mall' }],
+        uncertain: false,
+      });
+    });
+
+    const res = await GET(makeRequest());
+    const json = await res.json();
+
+    expect(mockOsmNearby).toHaveBeenCalledWith({ lat: 12.93, lng: 77.61, category: 'transit' });
+    expect(mockOsmNearby).toHaveBeenCalledWith({ lat: 12.93, lng: 77.61, category: 'amenities' });
+
+    const snapshot = json.items[0].neighborhoodSnapshot;
+    expect(snapshot.uncertain.transit).toBe(false);
+    expect(snapshot.uncertain.amenities).toBe(false);
+    expect(snapshot.transit[0].text).toContain('Koramangala Metro');
+    expect(snapshot.transit[0].text).toContain('420m');
+    expect(snapshot.amenities[0].text).toContain('Forum Mall');
+
+    const osmCitations = json.items[0].citations.filter((c: { kind: string }) => c.kind === 'osm');
+    expect(osmCitations.length).toBeGreaterThan(0);
+  });
+
+  it('marks transit and amenities uncertain, without calling osmNearby, for a listing with no coordinates', async () => {
+    mockSearchListings.mockResolvedValue([{ ...listingRow, lat: null, lng: null }]);
+
+    const res = await GET(makeRequest());
+    const json = await res.json();
+
+    expect(mockOsmNearby).not.toHaveBeenCalled();
+    expect(json.items[0].neighborhoodSnapshot.uncertain.transit).toBe(true);
+    expect(json.items[0].neighborhoodSnapshot.uncertain.amenities).toBe(true);
+    expect(json.items[0].neighborhoodSnapshot.transit).toEqual([]);
+    expect(json.items[0].neighborhoodSnapshot.amenities).toEqual([]);
   });
 });

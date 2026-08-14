@@ -6,6 +6,7 @@ import { shortlistItems } from '../../../lib/db/schema';
 import { getOrCreateSession } from '../../../lib/agent/session';
 import { searchListings } from '../../../lib/agent/tools/searchListings';
 import { retrieveNeighborhoodDocs } from '../../../lib/agent/tools/retrieveNeighborhoodDocs';
+import { osmNearby, type OsmNearbyResult } from '../../../lib/agent/tools/osmNearby';
 import { SESSION_COOKIE_NAME } from '../agent/route';
 import type { Citation, NeighborhoodSnapshot, ShortlistApiItem } from '../../../lib/types';
 
@@ -65,29 +66,46 @@ export async function GET(request: Request) {
 
   const items: ShortlistApiItem[] = await Promise.all(
     top.map(async (listing) => {
-      const safety = listing.locality
-        ? await retrieveNeighborhoodDocs({ locality: listing.locality, topic: 'safety and neighborhood character' })
-        : { chunks: [], uncertain: true };
+      const hasCoordinates = listing.lat !== null && listing.lng !== null;
+
+      const [safety, transit, amenities] = await Promise.all([
+        listing.locality
+          ? retrieveNeighborhoodDocs({ locality: listing.locality, topic: 'safety and neighborhood character' })
+          : Promise.resolve({ chunks: [], uncertain: true }),
+        hasCoordinates
+          ? osmNearby({ lat: listing.lat as number, lng: listing.lng as number, category: 'transit' })
+          : Promise.resolve<OsmNearbyResult>({ items: [], uncertain: true }),
+        hasCoordinates
+          ? osmNearby({ lat: listing.lat as number, lng: listing.lng as number, category: 'amenities' })
+          : Promise.resolve<OsmNearbyResult>({ items: [], uncertain: true }),
+      ]);
+
+      const describeOsmItem = (item: OsmNearbyResult['items'][number]) =>
+        `${item.name} (${item.type})${item.distanceMeters !== undefined ? ` — ${Math.round(item.distanceMeters)}m` : ''}`;
 
       const neighborhoodSnapshot: NeighborhoodSnapshot = {
-        transit: [],
+        transit: transit.items.map((item) => ({ text: describeOsmItem(item), source: 'OpenStreetMap' })),
         safety: safety.chunks.map((chunk) => ({
           text: `${chunk.chunkText.slice(0, 240)}…`,
           source: chunk.sourceTitle,
         })),
-        amenities: [],
+        amenities: amenities.items.map((item) => ({ text: describeOsmItem(item), source: 'OpenStreetMap' })),
         uncertain: {
-          transit: true,
+          transit: transit.uncertain,
           safety: safety.uncertain,
-          amenities: true,
+          amenities: amenities.uncertain,
         },
       };
 
-      const citations: Citation[] = safety.chunks.map((chunk) => ({
-        label: chunk.sourceTitle,
-        url: chunk.sourceUrl,
-        kind: 'rag',
-      }));
+      const citations: Citation[] = [
+        ...safety.chunks.map((chunk) => ({ label: chunk.sourceTitle, url: chunk.sourceUrl, kind: 'rag' as const })),
+        ...(transit.items.length > 0
+          ? [{ label: 'OSM: find_nearby_places(transit)', kind: 'osm' as const }]
+          : []),
+        ...(amenities.items.length > 0
+          ? [{ label: 'OSM: find_nearby_places(amenity)', kind: 'osm' as const }]
+          : []),
+      ];
 
       return {
         listing: {
