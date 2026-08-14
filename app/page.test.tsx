@@ -1,16 +1,26 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Home from './page';
-import { useVoiceRecorder } from '../lib/voice/useVoiceRecorder';
 
-vi.mock('../lib/voice/useVoiceRecorder', () => ({
-  useVoiceRecorder: vi.fn(),
+vi.mock('../components/SearchBar', () => ({
+  default: ({ onChange }: { onChange: (v: string) => void }) => (
+    <button data-testid="search-stub" onClick={() => onChange('Koramangala')}>
+      search stub
+    </button>
+  ),
+}));
+vi.mock('../components/FilterPills', () => ({
+  default: ({ onBedroomsChange }: { onBedroomsChange: (b: number | undefined) => void }) => (
+    <button data-testid="filter-stub" onClick={() => onBedroomsChange(2)}>
+      filter stub
+    </button>
+  ),
 }));
 
 const fixtureItems = [
   {
     listing: {
-      id: 'listing-1',
+      id: '1',
       societyName: 'Prestige Falcon City',
       locality: 'Koramangala',
       rent: 35000,
@@ -19,6 +29,7 @@ const fixtureItems = [
       amenities: ['Parking', 'Gym'],
       sqft: 1100,
       availabilityStatus: 'available',
+      scrapedAt: '2026-08-10T00:00:00.000Z',
     },
     neighborhoodSnapshot: {
       transit: [{ text: 'Metro 10 min walk', source: 'OSM: find_nearby_places(transit)' }],
@@ -32,7 +43,7 @@ const fixtureItems = [
   },
   {
     listing: {
-      id: 'listing-2',
+      id: '2',
       societyName: 'Sobha Dream Acres',
       locality: 'HSR Layout',
       rent: 42000,
@@ -41,6 +52,7 @@ const fixtureItems = [
       amenities: ['Lift'],
       sqft: 950,
       availabilityStatus: 'available',
+      scrapedAt: '2026-08-10T00:00:00.000Z',
     },
     neighborhoodSnapshot: {
       transit: [],
@@ -52,20 +64,16 @@ const fixtureItems = [
   },
 ];
 
+function jsonResponse(body: unknown, ok = true) {
+  return { ok, json: async () => body };
+}
+
 describe('Home (companion UI shell)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
-    vi.mocked(useVoiceRecorder).mockReturnValue({
-      isRecording: false,
-      start: vi.fn(),
-      stop: vi.fn().mockResolvedValue(new Blob()),
-    });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => fixtureItems,
-      })
-    );
+    fetchMock = vi.fn().mockResolvedValue(jsonResponse({ sessionId: 'sess-1', items: fixtureItems }));
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   afterEach(() => {
@@ -73,25 +81,67 @@ describe('Home (companion UI shell)', () => {
     vi.clearAllMocks();
   });
 
-  it('loads the shortlist and renders a card, neighborhood panel, sources, and booking panel per item', async () => {
+  it('loads the shortlist and renders a PropertyCard per item, plus EmailShortlistButton once a sessionId is known', async () => {
     render(<Home />);
 
     expect(screen.getByTestId('shortlist-loading')).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getAllByTestId('shortlist-item')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
 
-    expect(screen.getByText('Prestige Falcon City')).toBeInTheDocument();
-    expect(screen.getByText('Sobha Dream Acres')).toBeInTheDocument();
+    expect(screen.getByText('Prestige Falcon City, Koramangala')).toBeInTheDocument();
+    expect(screen.getByText('Sobha Dream Acres, HSR Layout')).toBeInTheDocument();
+    expect(screen.getByTestId('booking-panel')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email address')).toBeInTheDocument();
 
-    expect(screen.getAllByTestId('neighborhood-panel')).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledWith('/api/shortlist');
+  });
 
-    expect(screen.getByRole('link', { name: 'Wikipedia: Koramangala' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Wikipedia: HSR Layout' })).toBeInTheDocument();
+  it('removes a card immediately when its heart button is clicked, and posts the removal', async () => {
+    render(<Home />);
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
 
-    expect(screen.getByTestId('booking-empty')).toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce(jsonResponse({ changed: [1], unchanged: [2] }));
+    fireEvent.click(screen.getByRole('button', { name: /remove prestige falcon city from shortlist/i }));
 
-    expect(screen.getByTestId('voice-bar')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/shortlist/remove',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ listingId: 1 }) })
+    );
+  });
 
-    expect(fetch).toHaveBeenCalledWith('/api/shortlist');
+  it('refetches the shortlist with a locality query param when the search bar reports a change', async () => {
+    render(<Home />);
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
+
+    fireEvent.click(screen.getByTestId('search-stub'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/shortlist?locality=Koramangala'));
+  });
+
+  it('refetches the shortlist with a bedrooms query param when a filter pill reports a change', async () => {
+    render(<Home />);
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
+
+    fireEvent.click(screen.getByTestId('filter-stub'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/shortlist?bedrooms=2'));
+  });
+
+  it('opens the voice sheet from the floating mic button', async () => {
+    render(<Home />);
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
+
+    expect(screen.queryByTestId('voice-sheet')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open voice assistant' }));
+    expect(screen.getByTestId('voice-sheet')).toBeInTheDocument();
+  });
+
+  it('opens the voice sheet from the bottom nav AI Scout tab', async () => {
+    render(<Home />);
+    await waitFor(() => expect(screen.getAllByTestId('property-card')).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Scout' }));
+    expect(screen.getByTestId('voice-sheet')).toBeInTheDocument();
   });
 });
