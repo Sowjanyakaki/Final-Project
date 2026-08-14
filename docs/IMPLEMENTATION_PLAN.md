@@ -4,14 +4,14 @@
 
 ## 1. Overall status
 
-All 6 planned subsystems are implemented and unit-tested. Most have been **live-verified** against real data or a real (locally-run) service, not just mocks. Git is initialized, and `/api/agent` + `/api/stt` are built and live-verified. TTS does **not** go through Groq — `playai-tts` was fully retired (shutdown 2025-12-31) and its replacement is preview-only ("not for production" per Groq's own docs), so voice output uses the browser's native `SpeechSynthesis` API per `ARCHITECTURE.md`'s own documented contingency. The one concrete thing still missing before this meets the problem statement's baseline requirements is **a deployed public URL** — the full voice pipeline (mic → STT → agent → spoken reply) now works end-to-end against real services.
+All 6 planned subsystems are implemented and unit-tested. Most have been **live-verified** against real data or a real (locally-run) service, not just mocks. Git is initialized, and `/api/agent` + `/api/stt` are built and live-verified. TTS does **not** go through Groq — `playai-tts` was fully retired (shutdown 2025-12-31) and its replacement is preview-only ("not for production" per Groq's own docs), so voice output uses the browser's native `SpeechSynthesis` API per `ARCHITECTURE.md`'s own documented contingency. The companion UI has been redesigned to a mobile card-based layout (`data/UI.png`), with two new backend routes making search/filter/remove real rather than cosmetic. The one concrete thing still missing before this meets the problem statement's baseline requirements is **a deployed public URL**.
 
 | Subsystem | Built | Unit-tested | Live-verified |
 |---|---|---|---|
 | Data ingestion (scraper + RAG ingest) | ✅ | ✅ | ✅ 187 real listings, 6 real Wikipedia chunks |
 | MCP integrations (`lib/agent/tools/*`) | ✅ | ✅ (22 tests) | ✅ OSM MCP tested against the real **deployed** Railway service (streamable HTTP); Booking MCP tested against a real local server |
 | Orchestration agent | ✅ | ✅ | ✅ real multi-step Groq conversation, tool calls, grounding/uncertainty behavior |
-| Companion UI | ✅ | ✅ | ✅ real data rendered in a real browser (`next dev`) |
+| Companion UI (redesigned) | ✅ | ✅ | ✅ real data in a real browser: search, bedroom filter, expand/collapse, heart-remove (persists across reload), voice sheet (floating button + AI Scout tab) all confirmed working end-to-end |
 | Evaluation suite | ✅ | ✅ | ✅ all 3 evals run live against fixtures; grounding's LLM judge caught a real hallucination |
 | n8n-notify | ✅ | ✅ | ✅ `/api/notify` tested against a real DB session + stand-in webhook |
 | **`/api/agent` route** | ✅ | ✅ (5 tests) | ✅ real `next dev` + real Groq key: shortlist search, follow-up edit, and session-cookie reuse all confirmed over HTTP |
@@ -38,10 +38,11 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 - **Live-verified**: a real conversation turn correctly called `retrieveNeighborhoodDocs` twice, stated uncertainty when the grounding data didn't answer the question, then called `searchListings` and replied with a real shortlisted listing.
 
 ### Companion UI — `app/`, `components/`, `lib/voice/`
-- `ShortlistCard`, `NeighborhoodPanel`, `SourcesPanel`, `BookingPanel`, `VoiceBar`, `EmailShortlistButton`, composed in `app/page.tsx`.
+- Redesigned (see `docs/superpowers/specs/2026-08-14-property-scout-ui-redesign-design.md` and `docs/superpowers/plans/2026-08-14-property-scout-ui-redesign.md`) to match `data/UI.png`'s mobile card layout: `Header`, `Hero`, `SearchBar`, `FilterPills`, `PropertyCard` (supersedes the old `ShortlistCard`), `BottomNav`, `FloatingMicButton`, `VoiceSheet`, composed in a rewritten `app/page.tsx`. `NeighborhoodPanel`/`SourcesPanel` live inside each `PropertyCard`'s expand-on-tap detail view; `BookingPanel`/`EmailShortlistButton`/`VoiceBar` are reused completely unmodified, at the page level (not per-card — they operate on the whole session, not one listing).
+- `GET /api/shortlist` is now session-aware and filterable (`?locality=&bedrooms=`), returns `{ sessionId, items }` (not a bare array — needed so the client can learn its own session id, since the cookie is httpOnly), and seeds/excludes `shortlistItems` rows per session so a heart-removed card stays removed across reloads. New `POST /api/shortlist/remove` reuses the existing, already-tested `applyShortlistEdit`.
 - Filled a gap the plan assumed was pre-built: real `lib/voice/useVoiceRecorder.ts` (MediaRecorder-based push-to-talk) and `speak.ts` (see §2 below for why this is `SpeechSynthesis`-based rather than a `playAudio.ts`/`/api/tts` blob-playback pair).
-- Added a real `GET /api/shortlist` route (beyond the plan's mocked-only scope) so the UI shows actual scraped listings + actual grounded safety claims + honest "data unavailable" for ungrounded categories.
-- **Live-verified in a real browser**: real listings, real citations, correct uncertainty states, working mic button UI (recording itself untested — no real mic in this environment).
+- Styling is hand-rolled CSS Modules + `app/globals.css` design tokens — no new npm dependencies, no icon library (7 inline SVG icons in `components/icons/icons.tsx`). Property photos are a neutral placeholder (`public/property-placeholder.svg`) — the listings table has no photo field.
+- **Live-verified in a real browser**: 6 real listings render with real citations and grounded neighborhood content on expand; the bedroom filter pill and locality search both correctly narrow results (independently and combined); removing a card via the heart icon updates immediately and stays removed after a full page reload (with the list backfilling to 6 from the next matching real listing); the floating mic button and the bottom nav's "AI Scout" tab both open the same voice sheet wrapping the real `VoiceBar`, and it closes via backdrop click or the close button. Mic *recording* itself remains untested — no real microphone in this environment.
 
 ### Evaluation suite — `evals/`
 - `feasibility.ts` (rule-based, supports `--fixture` and `--session <id>`), `edit-correctness.ts` (rule-based, fixture-only), `grounding.ts` (LLM-assisted via Groq `generateObject`).
@@ -82,7 +83,10 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 
 - `osmNearby`'s `commute` category can't produce a meaningful result: the real `analyze_commute` tool needs two coordinate pairs (home + work), but the tool's current interface only accepts one point + a category string. Needs an interface change (Zod schema in `orchestrator.ts`, `osmNearby.ts`'s signature) to fix properly.
 - The grounding eval's commute-consistency check (`evals/feasibility.ts`) assumes `osmNearby`'s tool-call input carries a `commutePoint` field. The real tool's schema doesn't have one. Fixture-mode (what's tested) is unaffected; DB-mode against real `toolCallLog` rows would currently false-flag every commute check.
-- Companion UI has no visual styling (plain HTML) — matches the given plan's own reference components, which were also unstyled.
+- ~~Companion UI has no visual styling~~ — resolved: redesigned to match `data/UI.png` (see §2 above).
+- The search bar's locality matching is an exact match, inherited from `searchListings`'s `eq()` filter (`lib/agent/tools/searchListings.ts`) — typing a partial or differently-cased locality returns no results. Documented in the redesign plan's Global Constraints rather than silently "fixed" (would require changing shared search behavior other callers — the agent's `searchListings` tool — also depend on).
+- `GET /api/shortlist` writes DB rows (session seeding) on every read — a deliberate, minimal statefulness choice to make heart-remove persistent, not an oversight (see the redesign spec §8).
+- Chrome DevTools flags a minor accessibility advisory ("form field element should have an id or name attribute") on the `SearchBar` and `EmailShortlistButton` inputs — both already have `aria-label` (so screen readers get an accessible name), this is a browser-autofill-heuristic nit, not a WCAG violation. Pre-existing pattern on `EmailShortlistButton`; not fixed as part of the redesign since it wasn't in scope.
 
 ## 5. Remaining work
 
@@ -98,12 +102,12 @@ Roughly in priority order:
 - [ ] Import `n8n/shortlist-to-pdf-email.json` into a real n8n instance and configure real SMTP credentials.
 - [ ] Commit the pending fix in the OSM MCP fork (`D:\NextLeap\OpenStreetMap_MCP`, `server.py` — missing `User-Agent` headers) — that's a separate repo, needs a decision/commit from you.
 - [ ] Decide whether to fix the `commute`-category interface gap (two-point support) or leave it as a documented limitation.
-- [ ] Optional: visual styling for the companion UI (currently unstyled by design, matching the given plan).
+- [x] Visual styling for the companion UI — done; redesigned to match `data/UI.png` (see §2 above).
 
 ## 6. Running things locally today
 
-- `npm run dev` — companion UI: shortlist, `/api/agent` chat, `/api/stt` transcription, and browser-native spoken replies all work with real data/services. Mic capture itself is untested here (no real microphone in this environment).
-- `npm test` — full suite (128 tests)
+- `npm run dev` — companion UI: search, filters, expand/collapse, heart-remove, shortlist, `/api/agent` chat, `/api/stt` transcription, and browser-native spoken replies all work with real data/services. Mic capture itself is untested here (no real microphone in this environment).
+- `npm test` — full suite (173 tests)
 - `npm run scrape:listings` / `npm run ingest:docs` — refresh real data
 - `npm run eval:feasibility` / `eval:edit-correctness` / `eval:grounding` — run evals against fixtures (grounding needs `GROQ_API_KEY` in `.env`)
 - OSM MCP / Booking MCP / n8n: no persistent local instance is running by default — each was spun up temporarily for testing and torn down. See `docs/ARCHITECTURE.md` and `n8n/README.md` for how to stand them up again.
