@@ -4,7 +4,7 @@
 
 ## 1. Overall status
 
-All 6 planned subsystems are implemented and unit-tested. Most have been **live-verified** against real data or a real (locally-run) service, not just mocks. Three concrete things are still missing before this meets the problem statement's baseline requirements: **git version control, a deployed public URL, and the `/api/agent` + `/api/stt` + `/api/tts` routes** that would let the companion UI actually talk to the agent in a browser.
+All 6 planned subsystems are implemented and unit-tested. Most have been **live-verified** against real data or a real (locally-run) service, not just mocks. Git is initialized and the `/api/agent` route is built and live-verified. Two concrete things are still missing before this meets the problem statement's baseline requirements: **a deployed public URL, and the `/api/stt` + `/api/tts` routes** that would let the companion UI's voice pipeline actually work end-to-end in a browser (chat via `/api/agent` already works without voice).
 
 | Subsystem | Built | Unit-tested | Live-verified |
 |---|---|---|---|
@@ -14,9 +14,9 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 | Companion UI | ✅ | ✅ | ✅ real data rendered in a real browser (`next dev`) |
 | Evaluation suite | ✅ | ✅ | ✅ all 3 evals run live against fixtures; grounding's LLM judge caught a real hallucination |
 | n8n-notify | ✅ | ✅ | ✅ `/api/notify` tested against a real DB session + stand-in webhook |
+| **`/api/agent` route** | ✅ | ✅ (5 tests) | ✅ real `next dev` + real Groq key: shortlist search, follow-up edit, and session-cookie reuse all confirmed over HTTP |
 | **Voice pipeline (STT/TTS routes)** | ⚠️ partial | ✅ (mocked) | ❌ `/api/stt`, `/api/tts` don't exist |
-| **`/api/agent` route** | ❌ | — | ❌ not built — orchestrator only reachable via a direct script today |
-| **Git / version control** | ❌ | — | — no repo initialized |
+| **Git / version control** | ✅ | — | — repo initialized, commits on `main` |
 | **Deployment** | ❌ | — | — nothing deployed; everything run locally |
 
 ## 2. What's built and verified, subsystem by subsystem
@@ -47,6 +47,12 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 - Adapted types to reuse the *real* `EditIntent`/`ShortlistDiff` from `applyShortlistEdit.ts` instead of the plan's guessed shape; fixtures use numeric ids matching our actual schema.
 - **Live-verified with a real Groq key**: had to fix two real Groq API incompatibilities (`structuredOutputs` not supported on this model; `json_object` mode requires the literal word "json" in the prompt). After fixing, the grounding eval's LLM judge correctly passed a well-grounded claim and correctly failed one that contradicted its cited source.
 
+### `/api/agent` route — `app/api/agent/route.ts`
+- Wraps `getOrCreateSession` + `createAgent(sessionId).stream(messages)` as a real `POST` route handler, matching the request/response contract `components/VoiceBar.tsx` already expected (`{ message }` in, full text reply out via `res.text()`).
+- Session identity is a new `nextleap_session` httpOnly cookie (read via `next/headers`'s `cookies()`), since no route previously wired one up — `getOrCreateSession` existed but was untested-in-production until now.
+- **Live-verified**: real `next dev` + real Groq key — a shortlist search request returned a real grounded reply citing an actual DB listing, a follow-up "drop anything above 30000" on the same session cookie correctly triggered `applyShortlistEdit`, and both 400 error paths (empty message, invalid JSON) behave as expected.
+- Message history is single-turn only (no `messages` table exists yet to persist prior turns per session) — each request is `[{ role: 'user', content: message }]`. Multi-turn context within one voice exchange still works via the agent's own tool-call loop; cross-request conversational memory is a known gap, not silently papered over.
+
 ### n8n-notify — `app/api/notify/`, `components/EmailShortlistButton.tsx`, `n8n/`
 - Found and fixed two real bugs in the plan's own given test code (a Vitest hoisting/TDZ bug, and a test race condition on the loading state).
 - **Live-verified**: seeded a real session + real shortlist items, pointed `N8N_WEBHOOK_URL` at a throwaway local HTTP server, ran `next dev` for real, confirmed `200 {"status":"sent"}` and that the correct PII-free payload arrived.
@@ -71,8 +77,8 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 
 Roughly in priority order:
 
-- [ ] Initialize git, make an initial commit — currently `git status` reports "not a git repository." Required by the problem statement.
-- [ ] Build `app/api/agent/route.ts` — wraps `getOrCreateSession` + `createAgent(sessionId).stream(messages)` as a real Next.js route handler. Everything it needs already exists and is tested; this is the one piece standing between the working orchestrator and the working `VoiceBar` UI.
+- [x] Initialize git, make an initial commit — done; repo is on `main` with several commits.
+- [x] Build `app/api/agent/route.ts` — done, tested, and live-verified (see §2 above).
 - [ ] Build `/api/stt` and `/api/tts` — Groq Whisper transcription and Groq TTS (or a browser `SpeechSynthesis` fallback per `ARCHITECTURE.md`'s contingency). Not started at all; only the client-side recorder/player hooks exist.
 - [ ] Deploy: Railway project with the app service, Postgres (or keep SQLite for the demo — flag this decision explicitly if sticking with SQLite in production), the OSM MCP bridge (as `mcp-proxy`, not `supergateway`), the Booking MCP service, and an n8n service. Required by the problem statement ("Deployed prototype (public URL)").
 - [ ] Complete Google Calendar OAuth for the Booking MCP (`python auth.py`, needs your Google account) so booking actually works end-to-end.
@@ -84,7 +90,7 @@ Roughly in priority order:
 
 ## 6. Running things locally today
 
-- `npm run dev` — companion UI (shortlist works with real data; voice/chat will 404 until `/api/agent` exists)
+- `npm run dev` — companion UI (shortlist and `/api/agent` chat work with real data; voice specifically will 404 until `/api/stt` and `/api/tts` exist)
 - `npm test` — full suite (113 tests)
 - `npm run scrape:listings` / `npm run ingest:docs` — refresh real data
 - `npm run eval:feasibility` / `eval:edit-correctness` / `eval:grounding` — run evals against fixtures (grounding needs `GROQ_API_KEY` in `.env`)
