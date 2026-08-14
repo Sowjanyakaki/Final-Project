@@ -1,0 +1,53 @@
+:root {
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-primary: #14161f;
+  --color-accent: #f4703b;
+  --color-text: #14161f;
+  --color-text-muted: #6b7280;
+  --color-border: #e5e7eb;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --shadow-card: 0 4px 16px rgba(20, 22, 31, 0.08);
+  --max-content-width: 480px;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+main[data-testid='companion-ui'] {
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  background: var(--color-bg);
+  padding-bottom: 96px;
+}
