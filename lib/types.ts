@@ -10,6 +10,7 @@ export interface Listing {
   amenities: string[];
   sqft: number;
   availabilityStatus: AvailabilityStatus;
+  scrapedAt: string;
 }
 
 export interface SourcedClaim {
@@ -48,4 +49,9 @@ export interface ShortlistApiItem {
   listing: Listing;
   neighborhoodSnapshot: NeighborhoodSnapshot;
   citations: Citation[];
+}
+
+export interface ShortlistApiResponse {
+  sessionId: string;
+  items: ShortlistApiItem[];
 }
