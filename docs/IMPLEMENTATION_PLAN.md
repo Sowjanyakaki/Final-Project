@@ -76,7 +76,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 |---|---|---|
 | **Groq** (`GROQ_API_KEY`) | ✅ Real key, live-tested, working | Nothing — this one's ready |
 | **OSM MCP** | ✅ Deployed to Railway and live-verified: real `initialize` handshake + real nearby-places data for a Koramangala coordinate | Nothing — this one's ready. Turned out to need no bridge at all: the fork runs FastMCP's `streamable-http` transport natively (see `docs/ARCHITECTURE.md` §3.2a); fixed a real mismatch where our client was configured for SSE at the URL root instead of HTTP at `/mcp` |
-| **Booking MCP** | ✅ Stood up locally, full HTTP/auth layer confirmed correct | Needs real Google Calendar OAuth (`credentials.json` + `python auth.py`, blocked on your Google Cloud Console setup) before `list_slots`/`create_hold` return real data |
+| **Booking MCP** | ✅ Stood up locally, full HTTP/auth layer confirmed correct | Needs real Google Calendar OAuth (`credentials.json` + `python auth.py`, blocked on your Google Cloud Console setup) before `list_slots`/`create_hold` return real data. Fixed a real bug in the separate `Sowjanyakaki/MCP-server` repo: `create_hold`'s calendar event title was hardcoded as `Advisor Q&A — {topic} — {code}` (boilerplate from a different reference template) — now `House Visit — {topic} — {code}`, reported by the user after seeing the mismatched title on an actual created event. Fixed in `calendar_tool.py` + `README.md`, committed and pushed to that repo directly (`abe23fe`) |
 | **n8n** | ✅ Tested against a stand-in webhook | No real n8n instance exists yet; needs Railway provisioning + workflow import per `n8n/README.md` |
 
 ## 4. Known, flagged limitations (not silently papered over)
