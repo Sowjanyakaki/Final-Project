@@ -6,7 +6,7 @@ import { shortlistItems } from '../../../lib/db/schema';
 import { getOrCreateSession } from '../../../lib/agent/session';
 import { searchListings } from '../../../lib/agent/tools/searchListings';
 import { retrieveNeighborhoodDocs } from '../../../lib/agent/tools/retrieveNeighborhoodDocs';
-import { osmNearby, type OsmNearbyResult } from '../../../lib/agent/tools/osmNearby';
+import { openOsmSession, type OsmNearbyResult } from '../../../lib/agent/tools/osmNearby';
 import { SESSION_COOKIE_NAME } from '../agent/route';
 import type { Citation, NeighborhoodSnapshot, ShortlistApiItem } from '../../../lib/types';
 
@@ -64,67 +64,79 @@ export async function GET(request: Request) {
   const withoutLocality = visible.filter((r) => !r.locality);
   const top = [...withLocality, ...withoutLocality].slice(0, SHORTLIST_LIMIT);
 
-  const items: ShortlistApiItem[] = await Promise.all(
-    top.map(async (listing) => {
-      const hasCoordinates = listing.lat !== null && listing.lng !== null;
+  // One shared MCP session for every listing's transit/amenities lookups.
+  // Each lookup previously opened its own connection (confirmed live at
+  // ~4s of connect+tool-discovery overhead per call, before the actual
+  // query even ran) — with up to 6 listings x 2 categories, that didn't
+  // scale (observed 8s-65s page loads). Opening once here cuts that
+  // overhead to a single connect for the whole request.
+  const osmSession = await openOsmSession();
+  let items: ShortlistApiItem[];
+  try {
+    items = await Promise.all(
+      top.map(async (listing) => {
+        const hasCoordinates = listing.lat !== null && listing.lng !== null;
 
-      const [safety, transit, amenities] = await Promise.all([
-        listing.locality
-          ? retrieveNeighborhoodDocs({ locality: listing.locality, topic: 'safety and neighborhood character' })
-          : Promise.resolve({ chunks: [], uncertain: true }),
-        hasCoordinates
-          ? osmNearby({ lat: listing.lat as number, lng: listing.lng as number, category: 'transit' })
-          : Promise.resolve<OsmNearbyResult>({ items: [], uncertain: true }),
-        hasCoordinates
-          ? osmNearby({ lat: listing.lat as number, lng: listing.lng as number, category: 'amenities' })
-          : Promise.resolve<OsmNearbyResult>({ items: [], uncertain: true }),
-      ]);
+        const [safety, transit, amenities] = await Promise.all([
+          listing.locality
+            ? retrieveNeighborhoodDocs({ locality: listing.locality, topic: 'safety and neighborhood character' })
+            : Promise.resolve({ chunks: [], uncertain: true }),
+          hasCoordinates
+            ? osmSession.query({ lat: listing.lat as number, lng: listing.lng as number, category: 'transit' })
+            : Promise.resolve<OsmNearbyResult>({ items: [], uncertain: true }),
+          hasCoordinates
+            ? osmSession.query({ lat: listing.lat as number, lng: listing.lng as number, category: 'amenities' })
+            : Promise.resolve<OsmNearbyResult>({ items: [], uncertain: true }),
+        ]);
 
-      const describeOsmItem = (item: OsmNearbyResult['items'][number]) =>
-        `${item.name} (${item.type})${item.distanceMeters !== undefined ? ` — ${Math.round(item.distanceMeters)}m` : ''}`;
+        const describeOsmItem = (item: OsmNearbyResult['items'][number]) =>
+          `${item.name} (${item.type})${item.distanceMeters !== undefined ? ` — ${Math.round(item.distanceMeters)}m` : ''}`;
 
-      const neighborhoodSnapshot: NeighborhoodSnapshot = {
-        transit: transit.items.map((item) => ({ text: describeOsmItem(item), source: 'OpenStreetMap' })),
-        safety: safety.chunks.map((chunk) => ({
-          text: `${chunk.chunkText.slice(0, 240)}…`,
-          source: chunk.sourceTitle,
-        })),
-        amenities: amenities.items.map((item) => ({ text: describeOsmItem(item), source: 'OpenStreetMap' })),
-        uncertain: {
-          transit: transit.uncertain,
-          safety: safety.uncertain,
-          amenities: amenities.uncertain,
-        },
-      };
+        const neighborhoodSnapshot: NeighborhoodSnapshot = {
+          transit: transit.items.map((item) => ({ text: describeOsmItem(item), source: 'OpenStreetMap' })),
+          safety: safety.chunks.map((chunk) => ({
+            text: `${chunk.chunkText.slice(0, 240)}…`,
+            source: chunk.sourceTitle,
+          })),
+          amenities: amenities.items.map((item) => ({ text: describeOsmItem(item), source: 'OpenStreetMap' })),
+          uncertain: {
+            transit: transit.uncertain,
+            safety: safety.uncertain,
+            amenities: amenities.uncertain,
+          },
+        };
 
-      const citations: Citation[] = [
-        ...safety.chunks.map((chunk) => ({ label: chunk.sourceTitle, url: chunk.sourceUrl, kind: 'rag' as const })),
-        ...(transit.items.length > 0
-          ? [{ label: 'OSM: find_nearby_places(transit)', kind: 'osm' as const }]
-          : []),
-        ...(amenities.items.length > 0
-          ? [{ label: 'OSM: find_nearby_places(amenity)', kind: 'osm' as const }]
-          : []),
-      ];
+        const citations: Citation[] = [
+          ...safety.chunks.map((chunk) => ({ label: chunk.sourceTitle, url: chunk.sourceUrl, kind: 'rag' as const })),
+          ...(transit.items.length > 0
+            ? [{ label: 'OSM: find_nearby_places(transit)', kind: 'osm' as const }]
+            : []),
+          ...(amenities.items.length > 0
+            ? [{ label: 'OSM: find_nearby_places(amenity)', kind: 'osm' as const }]
+            : []),
+        ];
 
-      return {
-        listing: {
-          id: String(listing.id),
-          societyName: listing.societyName ?? 'Unnamed listing',
-          locality: listing.locality ?? 'Unknown locality',
-          rent: listing.rent ?? 0,
-          bedrooms: listing.bedrooms ?? 0,
-          furnishing: listing.furnishing ?? 'Unknown',
-          amenities: listing.amenities,
-          sqft: listing.sqft ?? 0,
-          availabilityStatus: listing.availabilityStatus,
-          scrapedAt: listing.scrapedAt.toISOString(),
-        },
-        neighborhoodSnapshot,
-        citations,
-      };
-    })
-  );
+        return {
+          listing: {
+            id: String(listing.id),
+            societyName: listing.societyName ?? 'Unnamed listing',
+            locality: listing.locality ?? 'Unknown locality',
+            rent: listing.rent ?? 0,
+            bedrooms: listing.bedrooms ?? 0,
+            furnishing: listing.furnishing ?? 'Unknown',
+            amenities: listing.amenities,
+            sqft: listing.sqft ?? 0,
+            availabilityStatus: listing.availabilityStatus,
+            scrapedAt: listing.scrapedAt.toISOString(),
+          },
+          neighborhoodSnapshot,
+          citations,
+        };
+      })
+    );
+  } finally {
+    await osmSession.close();
+  }
 
   const response = NextResponse.json({ sessionId, items });
   cookieStore.set(SESSION_COOKIE_NAME, sessionId, {

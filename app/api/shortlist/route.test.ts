@@ -3,7 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { mockGetOrCreateSession } = vi.hoisted(() => ({ mockGetOrCreateSession: vi.fn() }));
 const { mockSearchListings } = vi.hoisted(() => ({ mockSearchListings: vi.fn() }));
 const { mockRetrieveNeighborhoodDocs } = vi.hoisted(() => ({ mockRetrieveNeighborhoodDocs: vi.fn() }));
-const { mockOsmNearby } = vi.hoisted(() => ({ mockOsmNearby: vi.fn() }));
+const { mockOpenOsmSession, mockOsmQuery, mockOsmClose } = vi.hoisted(() => ({
+  mockOpenOsmSession: vi.fn(),
+  mockOsmQuery: vi.fn(),
+  mockOsmClose: vi.fn(),
+}));
 const { mockCookieGet, mockCookieSet, mockCookies } = vi.hoisted(() => {
   const mockCookieGet = vi.fn();
   const mockCookieSet = vi.fn();
@@ -25,7 +29,7 @@ vi.mock('../../../lib/agent/tools/searchListings', () => ({ searchListings: mock
 vi.mock('../../../lib/agent/tools/retrieveNeighborhoodDocs', () => ({
   retrieveNeighborhoodDocs: mockRetrieveNeighborhoodDocs,
 }));
-vi.mock('../../../lib/agent/tools/osmNearby', () => ({ osmNearby: mockOsmNearby }));
+vi.mock('../../../lib/agent/tools/osmNearby', () => ({ openOsmSession: mockOpenOsmSession }));
 vi.mock('next/headers', () => ({ cookies: mockCookies }));
 
 import { GET } from './route';
@@ -58,7 +62,9 @@ describe('GET /api/shortlist', () => {
     mockGetOrCreateSession.mockResolvedValue({ id: 'sess-1', isNew: true });
     mockSearchListings.mockResolvedValue([listingRow]);
     mockRetrieveNeighborhoodDocs.mockResolvedValue({ chunks: [], uncertain: true });
-    mockOsmNearby.mockResolvedValue({ items: [], uncertain: true });
+    mockOsmQuery.mockResolvedValue({ items: [], uncertain: true });
+    mockOsmClose.mockResolvedValue(undefined);
+    mockOpenOsmSession.mockResolvedValue({ query: mockOsmQuery, close: mockOsmClose });
     mockWhere.mockResolvedValue([]);
     mockSelect.mockReturnValue({ from: mockFrom });
     mockFrom.mockReturnValue({ where: mockWhere });
@@ -116,8 +122,8 @@ describe('GET /api/shortlist', () => {
     expect(json.sessionId).toBe('sess-existing');
   });
 
-  it('includes real transit and amenities data from osmNearby for a listing with coordinates', async () => {
-    mockOsmNearby.mockImplementation(({ category }: { category: string }) => {
+  it('includes real transit and amenities data from a shared OSM session for a listing with coordinates', async () => {
+    mockOsmQuery.mockImplementation(({ category }: { category: string }) => {
       if (category === 'transit') {
         return Promise.resolve({
           items: [{ name: 'Koramangala Metro', type: 'public_transport/station', distanceMeters: 420 }],
@@ -133,8 +139,8 @@ describe('GET /api/shortlist', () => {
     const res = await GET(makeRequest());
     const json = await res.json();
 
-    expect(mockOsmNearby).toHaveBeenCalledWith({ lat: 12.93, lng: 77.61, category: 'transit' });
-    expect(mockOsmNearby).toHaveBeenCalledWith({ lat: 12.93, lng: 77.61, category: 'amenities' });
+    expect(mockOsmQuery).toHaveBeenCalledWith({ lat: 12.93, lng: 77.61, category: 'transit' });
+    expect(mockOsmQuery).toHaveBeenCalledWith({ lat: 12.93, lng: 77.61, category: 'amenities' });
 
     const snapshot = json.items[0].neighborhoodSnapshot;
     expect(snapshot.uncertain.transit).toBe(false);
@@ -147,16 +153,40 @@ describe('GET /api/shortlist', () => {
     expect(osmCitations.length).toBeGreaterThan(0);
   });
 
-  it('marks transit and amenities uncertain, without calling osmNearby, for a listing with no coordinates', async () => {
+  it('marks transit and amenities uncertain, without querying OSM, for a listing with no coordinates', async () => {
     mockSearchListings.mockResolvedValue([{ ...listingRow, lat: null, lng: null }]);
 
     const res = await GET(makeRequest());
     const json = await res.json();
 
-    expect(mockOsmNearby).not.toHaveBeenCalled();
+    expect(mockOsmQuery).not.toHaveBeenCalled();
     expect(json.items[0].neighborhoodSnapshot.uncertain.transit).toBe(true);
     expect(json.items[0].neighborhoodSnapshot.uncertain.amenities).toBe(true);
     expect(json.items[0].neighborhoodSnapshot.transit).toEqual([]);
     expect(json.items[0].neighborhoodSnapshot.amenities).toEqual([]);
+  });
+
+  it('opens exactly one OSM session for the whole request and closes it once, regardless of listing count', async () => {
+    const secondListing = { ...listingRow, id: 2, sourceUrl: 'https://example.com/2', societyName: 'Beta' };
+    mockSearchListings.mockResolvedValue([listingRow, secondListing]);
+
+    const res = await GET(makeRequest());
+    await res.json();
+
+    // Two listings x two categories = 4 lookups, but only ONE connect —
+    // this is the actual fix: previously every lookup opened its own
+    // connection (confirmed live at ~4s each), which didn't scale past a
+    // couple of listings.
+    expect(mockOpenOsmSession).toHaveBeenCalledTimes(1);
+    expect(mockOsmQuery).toHaveBeenCalledTimes(4);
+    expect(mockOsmClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('still closes the OSM session even if a query rejects, so the connection is never leaked', async () => {
+    mockOsmQuery.mockRejectedValue(new Error('upstream timeout'));
+
+    await expect(GET(makeRequest())).rejects.toThrow();
+
+    expect(mockOsmClose).toHaveBeenCalledTimes(1);
   });
 });
