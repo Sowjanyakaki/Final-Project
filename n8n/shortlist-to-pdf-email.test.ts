@@ -24,7 +24,7 @@ describe('shortlist-to-pdf-email.json', () => {
 
     expect(types).toContain('n8n-nodes-base.webhook');
     expect(types).toContain('n8n-nodes-base.code');
-    expect(types).toContain('n8n-nodes-puppeteer.puppeteer');
+    expect(types).toContain('n8n-nodes-base.httpRequest');
     expect(types).toContain('n8n-nodes-base.emailSend');
     expect(types).toContain('n8n-nodes-base.respondToWebhook');
   });
@@ -38,7 +38,7 @@ describe('shortlist-to-pdf-email.json', () => {
 
     const webhookNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.webhook');
     const codeNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.code');
-    const pdfNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-puppeteer.puppeteer');
+    const pdfNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.httpRequest');
     const emailNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.emailSend');
     const respondNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.respondToWebhook');
 
@@ -62,6 +62,16 @@ describe('shortlist-to-pdf-email.json', () => {
 
     const serialized = JSON.stringify(emailNode).toLowerCase();
     expect(serialized).not.toMatch(/password|smtp_pass|apikey|api_key/);
+  });
+
+  it('references the PDF conversion API key via a credential name only, with no inline secrets', () => {
+    const workflow = loadWorkflow();
+    const pdfNode = workflow.nodes.find((n: any) => n.type === 'n8n-nodes-base.httpRequest');
+
+    expect(pdfNode.credentials?.httpBasicAuth?.name).toBeTruthy();
+
+    const serialized = JSON.stringify(pdfNode).toLowerCase();
+    expect(serialized).not.toMatch(/password|apikey|api_key/);
   });
 
   it('the webhook is configured for POST at the shortlist-pdf path', () => {

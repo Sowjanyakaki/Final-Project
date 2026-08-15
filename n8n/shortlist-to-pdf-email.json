@@ -27,20 +27,38 @@
     },
     {
       "parameters": {
-        "operation": "getPdf",
-        "html": "={{$json.html}}",
-        "options": {}
+        "method": "POST",
+        "url": "https://api.pdfshift.io/v3/convert/pdf",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: $json.html }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
       },
       "id": "1f2a3b4c-0000-4000-8000-000000000003",
       "name": "Convert to PDF",
-      "type": "n8n-nodes-puppeteer.puppeteer",
-      "typeVersion": 1,
-      "position": [680, 300]
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "2",
+          "name": "PDFShift account"
+        }
+      }
     },
     {
       "parameters": {
         "fromEmail": "notify@yourdomain.com",
-        "toEmail": "={{$json.email}}",
+        "toEmail": "={{$('Format Shortlist HTML').item.json.email}}",
         "subject": "Your Property Shortlist",
         "text": "Hi,\n\nPlease find your property shortlist attached as a PDF.\n\n— NextLeap Property Scout",
         "attachments": "data",
