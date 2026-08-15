@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import styles from './EmailShortlistButton.module.css';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
@@ -40,9 +41,10 @@ export function EmailShortlistButton({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div>
+    <div className={styles.container}>
       <input
         type="email"
+        className={styles.input}
         aria-label="Email address"
         placeholder="you@example.com"
         value={email}
@@ -52,12 +54,20 @@ export function EmailShortlistButton({ sessionId }: { sessionId: string }) {
         }}
         disabled={status === 'loading'}
       />
-      <button onClick={handleClick} disabled={!isEmailValid || status === 'loading'}>
+      <button className={styles.button} onClick={handleClick} disabled={!isEmailValid || status === 'loading'}>
         {status === 'loading' ? 'Sending…' : 'Email me this shortlist'}
       </button>
-      {!isEmailValid && email.length > 0 && <p role="alert">Enter a valid email address.</p>}
-      {status === 'success' && <p>Shortlist sent! Check your inbox.</p>}
-      {status === 'error' && <p role="alert">{errorMessage}</p>}
+      {!isEmailValid && email.length > 0 && (
+        <p role="alert" className={styles.error}>
+          Enter a valid email address.
+        </p>
+      )}
+      {status === 'success' && <p className={styles.success}>Shortlist sent! Check your inbox.</p>}
+      {status === 'error' && (
+        <p role="alert" className={styles.error}>
+          {errorMessage}
+        </p>
+      )}
     </div>
   );
 }

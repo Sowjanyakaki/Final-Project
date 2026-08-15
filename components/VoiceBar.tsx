@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import styles from './VoiceBar.module.css';
 import { useVoiceRecorder } from '../lib/voice/useVoiceRecorder';
 import { speak } from '../lib/voice/speak';
 
@@ -77,13 +78,23 @@ export default function VoiceBar() {
   }
 
   return (
-    <section aria-label="Voice assistant" data-testid="voice-bar">
-      <button type="button" onClick={handleMicClick} aria-pressed={recording}>
+    <section aria-label="Voice assistant" data-testid="voice-bar" className={styles.bar}>
+      <div className={styles.messages}>
+        <p data-testid="transcript" className={styles.transcript}>
+          {transcript || 'Say something to get started.'}
+        </p>
+        {reply && (
+          <p data-testid="agent-reply" className={styles.reply}>
+            {reply}
+          </p>
+        )}
+      </div>
+      <p data-testid="voice-status" className={styles.status}>
+        {status}
+      </p>
+      <button type="button" className={styles.micButton} onClick={handleMicClick} aria-pressed={recording}>
         {recording ? 'Stop recording' : 'Start recording'}
       </button>
-      <p data-testid="voice-status">{status}</p>
-      <p data-testid="transcript">{transcript || 'Say something to get started.'}</p>
-      <p data-testid="agent-reply">{reply}</p>
     </section>
   );
 }
