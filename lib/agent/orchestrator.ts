@@ -145,7 +145,7 @@ export function createAgent(sessionId: string) {
   return {
     tools,
     systemPrompt: SYSTEM_PROMPT,
-    stream: (messages: ModelMessage[]) =>
+    stream: (messages: ModelMessage[], options?: { onFinish?: (event: { text: string }) => void | Promise<void> }) =>
       streamText({
         model: groq('llama-3.3-70b-versatile'),
         system: SYSTEM_PROMPT,
@@ -157,6 +157,10 @@ export function createAgent(sessionId: string) {
         // reply that explains the result. Allow enough steps for a turn that
         // calls several tools (search + grounding + booking) before replying.
         stopWhen: stepCountIs(8),
+        // Lets the route persist the final assistant reply once the whole
+        // multi-step turn completes, without blocking the streamed response
+        // the client is already reading.
+        onFinish: options?.onFinish,
       }),
   };
 }

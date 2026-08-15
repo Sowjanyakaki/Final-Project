@@ -6,6 +6,10 @@ const { mockGetOrCreateSession } = vi.hoisted(() => ({
 const { mockCreateAgent } = vi.hoisted(() => ({
   mockCreateAgent: vi.fn(),
 }));
+const { mockGetConversationHistory, mockAppendMessage } = vi.hoisted(() => ({
+  mockGetConversationHistory: vi.fn(),
+  mockAppendMessage: vi.fn(),
+}));
 const { mockCookieGet, mockCookieSet, mockCookies } = vi.hoisted(() => {
   const mockCookieGet = vi.fn();
   const mockCookieSet = vi.fn();
@@ -15,6 +19,10 @@ const { mockCookieGet, mockCookieSet, mockCookies } = vi.hoisted(() => {
 
 vi.mock('../../../lib/agent/session', () => ({ getOrCreateSession: mockGetOrCreateSession }));
 vi.mock('../../../lib/agent/orchestrator', () => ({ createAgent: mockCreateAgent }));
+vi.mock('../../../lib/agent/messages', () => ({
+  getConversationHistory: mockGetConversationHistory,
+  appendMessage: mockAppendMessage,
+}));
 vi.mock('next/headers', () => ({ cookies: mockCookies }));
 
 import { POST, SESSION_COOKIE_NAME } from './route';
@@ -34,8 +42,10 @@ describe('POST /api/agent', () => {
     vi.resetAllMocks();
     mockCookies.mockReturnValue(Promise.resolve({ get: mockCookieGet, set: mockCookieSet }));
     mockCookieGet.mockReturnValue(undefined);
+    mockGetConversationHistory.mockResolvedValue([]);
+    mockAppendMessage.mockResolvedValue(undefined);
     mockStream.mockReturnValue({
-      toTextStreamResponse: () => new Response('Here are 3 matching listings.', { status: 200 }),
+      text: Promise.resolve('Here are 3 matching listings.'),
     });
     mockCreateAgent.mockReturnValue({ stream: mockStream });
   });
@@ -48,13 +58,61 @@ describe('POST /api/agent', () => {
 
     expect(mockGetOrCreateSession).toHaveBeenCalledWith(undefined);
     expect(mockCreateAgent).toHaveBeenCalledWith('sess-new');
-    expect(mockStream).toHaveBeenCalledWith([{ role: 'user', content: 'find a 2bhk in Koramangala' }]);
+    expect(mockStream).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'find a 2bhk in Koramangala' }],
+      expect.objectContaining({ onFinish: expect.any(Function) })
+    );
     expect(text).toBe('Here are 3 matching listings.');
     expect(mockCookieSet).toHaveBeenCalledWith(
       SESSION_COOKIE_NAME,
       'sess-new',
       expect.objectContaining({ httpOnly: true, path: '/' })
     );
+  });
+
+  it("persists the user's message before streaming, using prior conversation history so the model has memory across turns", async () => {
+    mockGetOrCreateSession.mockResolvedValue({ id: 'sess-1', isNew: false });
+    mockGetConversationHistory.mockResolvedValue([
+      { role: 'user', content: 'find a 2bhk in Koramangala' },
+      { role: 'assistant', content: 'Got it — what is your budget?' },
+    ]);
+
+    await POST(makeRequest({ message: '40000' }));
+
+    expect(mockGetConversationHistory).toHaveBeenCalledWith('sess-1');
+    expect(mockStream).toHaveBeenCalledWith(
+      [
+        { role: 'user', content: 'find a 2bhk in Koramangala' },
+        { role: 'assistant', content: 'Got it — what is your budget?' },
+        { role: 'user', content: '40000' },
+      ],
+      expect.anything()
+    );
+    expect(mockAppendMessage).toHaveBeenCalledWith('sess-1', 'user', '40000');
+  });
+
+  it("persists the assistant's final reply via the onFinish callback once the stream completes", async () => {
+    mockGetOrCreateSession.mockResolvedValue({ id: 'sess-1', isNew: false });
+
+    await POST(makeRequest({ message: 'find a 2bhk in Koramangala' }));
+
+    const onFinish = mockStream.mock.calls[0][1].onFinish;
+    await onFinish({ text: 'Here are 3 matching listings.' });
+
+    expect(mockAppendMessage).toHaveBeenCalledWith('sess-1', 'assistant', 'Here are 3 matching listings.');
+  });
+
+  it('returns a graceful fallback message instead of an empty response when the underlying generation fails', async () => {
+    mockGetOrCreateSession.mockResolvedValue({ id: 'sess-1', isNew: false });
+    const rejection = Promise.reject(new Error('Failed to call a function. Please adjust your prompt.'));
+    rejection.catch(() => {}); // avoid an unhandled-rejection warning before route.ts awaits it
+    mockStream.mockReturnValue({ text: rejection });
+
+    const res = await POST(makeRequest({ message: 'yes' }));
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text.length).toBeGreaterThan(0);
   });
 
   it('reuses the session id from an existing cookie', async () => {

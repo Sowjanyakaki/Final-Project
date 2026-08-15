@@ -49,6 +49,14 @@ export const shortlistItems = sqliteTable('shortlist_items', {
   addedAt: integer('added_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const messages = sqliteTable('messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sessionId: text('session_id').notNull().references(() => sessions.id),
+  role: text('role', { enum: ['user', 'assistant'] }).notNull(),
+  content: text('content').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
 export const toolCallLog = sqliteTable('tool_call_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sessionId: text('session_id').notNull().references(() => sessions.id),

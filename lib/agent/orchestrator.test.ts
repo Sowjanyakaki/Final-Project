@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { streamText } from 'ai';
 import { db } from '../db/client';
 import { searchListings } from './tools/searchListings';
 import { retrieveNeighborhoodDocs } from './tools/retrieveNeighborhoodDocs';
@@ -14,6 +15,7 @@ vi.mock('../db/client', () => ({
 
 vi.mock('ai', () => ({
   streamText: vi.fn(),
+  stepCountIs: vi.fn((n: number) => n),
   // Identity passthrough so tests can call tools[...].execute(...) directly
   // without depending on the real AI SDK's schema-validation internals.
   tool: vi.fn((config: unknown) => config),
@@ -106,5 +108,20 @@ describe('createAgent', () => {
     });
 
     expect(insertValuesMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('forwards an onFinish callback to streamText, so a caller can persist the final reply once streaming ends', () => {
+    const agent = createAgent('sess-1');
+    const onFinish = vi.fn();
+
+    agent.stream([{ role: 'user', content: 'hi' }], { onFinish });
+
+    expect(streamText).toHaveBeenCalledWith(expect.objectContaining({ onFinish }));
+  });
+
+  it('does not blow up when stream is called without an onFinish callback', () => {
+    const agent = createAgent('sess-1');
+
+    expect(() => agent.stream([{ role: 'user', content: 'hi' }])).not.toThrow();
   });
 });
