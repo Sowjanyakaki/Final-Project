@@ -41,7 +41,8 @@ export async function POST(request: Request) {
   const agent = createAgent(sessionId);
   const result = agent.stream(messages, {
     onFinish: async ({ text }) => {
-      await appendMessage(sessionId, 'assistant', text);
+      const clean = cleanReplyText(text);
+      await appendMessage(sessionId, 'assistant', clean);
     },
   });
 
@@ -50,10 +51,11 @@ export async function POST(request: Request) {
   // buffering server-side lets us catch a failed generation (a real,
   // observed Groq failure: "Failed to call a function...") and return a
   // clear message instead of an empty 200 that looks like the agent went
-  // silent.
+  // silent. We also strip any raw function tags leaked by the model into the
+  // text completion stream.
   let replyText: string;
   try {
-    replyText = await result.text;
+    replyText = cleanReplyText(await result.text);
   } catch {
     replyText = FALLBACK_REPLY;
   }
@@ -70,4 +72,19 @@ export async function POST(request: Request) {
   });
 
   return response;
+}
+
+/**
+ * Strips raw XML-like or parenthesized tool/function execution tags leaked
+ * by certain Groq models directly into their text completion stream.
+ */
+export function cleanReplyText(text: string): string {
+  return text
+    .replace(/\(function=.*?>.*?<\/function>/gi, '')
+    .replace(/<function=.*?>.*?<\/function>/gi, '')
+    .replace(/<\/function>/gi, '')
+    .replace(/<function=.*?>/gi, '')
+    .replace(/\(function=.*?>/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }

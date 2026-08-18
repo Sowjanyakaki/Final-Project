@@ -12,12 +12,12 @@ beforeEach(() => {
 
 describe('getConversationHistory', () => {
   it('returns prior messages in chronological order as ModelMessage-shaped objects', async () => {
-    const orderByMock = vi.fn().mockResolvedValue([
-      { role: 'user', content: 'find a 2bhk' },
+    const limitMock = vi.fn().mockResolvedValue([
       { role: 'assistant', content: 'Sure — what is your budget?' },
+      { role: 'user', content: 'find a 2bhk' },
     ]);
     vi.mocked(db.select).mockReturnValue({
-      from: () => ({ where: () => ({ orderBy: orderByMock }) }),
+      from: () => ({ where: () => ({ orderBy: () => ({ limit: limitMock }) }) }),
     } as never);
 
     const result = await getConversationHistory('sess-1');
@@ -30,7 +30,7 @@ describe('getConversationHistory', () => {
 
   it('returns an empty array for a session with no prior messages', async () => {
     vi.mocked(db.select).mockReturnValue({
-      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([]) }) }),
+      from: () => ({ where: () => ({ orderBy: () => ({ limit: vi.fn().mockResolvedValue([]) }) }) }),
     } as never);
 
     const result = await getConversationHistory('sess-new');

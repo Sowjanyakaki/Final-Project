@@ -150,4 +150,16 @@ describe('POST /api/agent', () => {
     expect(res.status).toBe(400);
     expect(mockCreateAgent).not.toHaveBeenCalled();
   });
+
+  it('strips raw function/tool tags leaked by the model from the output', async () => {
+    mockGetOrCreateSession.mockResolvedValue({ id: 'sess-1', isNew: false });
+    mockStream.mockReturnValue({
+      text: Promise.resolve('Hello. (function=osmNearby>{"category": "transit"}</function> According to OSM, there is transit. <function=applyShortlistEdit>{"editIntent": {}}</function> Done.'),
+    });
+
+    const res = await POST(makeRequest({ message: 'how is transit' }));
+    const text = await res.text();
+
+    expect(text).toBe('Hello.  According to OSM, there is transit.  Done.');
+  });
 });
