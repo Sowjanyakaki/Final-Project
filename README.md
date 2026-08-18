@@ -18,11 +18,11 @@ graph TD
     Booking_MCP[Booking MCP: FastAPI + Google Calendar]
     n8n[n8n Workflow: Webhook to PDF + Email]
 
-    UI <-->|REST / Voice STT / SSE| NextApp
-    NextApp <-->|Drizzle ORM| DB
-    NextApp <-->|Groq SDK / AI SDK| Groq
-    NextApp <-->|@ai-sdk/mcp Client| OSM_MCP
-    NextApp <-->|HTTP API with API Key| Booking_MCP
+    UI ---|REST / Voice STT / SSE| NextApp
+    NextApp ---|Drizzle ORM| DB
+    NextApp ---|Groq SDK / AI SDK| Groq
+    NextApp ---|ai-sdk/mcp Client| OSM_MCP
+    NextApp ---|HTTP API with API Key| Booking_MCP
     NextApp -->|Webhook Notification| n8n
 ```
 
@@ -30,7 +30,7 @@ graph TD
 *   **Browser (UI)**: Features a push-to-talk mic button using the browser `MediaRecorder` API, a live transcript view, interactive shortlist cards, a neighborhood snapshot panel, citations panel, and a booking calendar panel. Audio responses are spoken client-side using browser `SpeechSynthesis`.
 *   **Next.js Server (Orchestration & API)**:
     *   `/api/stt`: Transcribes browser audio blobs using Groq-hosted Whisper (`whisper-large-v3-turbo`).
-    *   `/api/agent`: Orchestrator agent loop (using Vercel AI SDK + Groq `llama-3.3-70b-versatile` tool calling).
+    *   `/api/agent`: Orchestrator agent loop (using Vercel AI SDK + Groq `openai/gpt-oss-120b` tool calling).
     *   `/api/shortlist`, `/api/booking`, `/api/notify`: Session/shortlist state handlers and n8n webhook notification triggers.
 *   **Database (SQLite)**: Drizzle ORM schema mapping SQLite (`better-sqlite3`) tables for `listings`, `neighborhood_docs`, `sessions`, `shortlist_items`, `tool_call_log`, and `bookings`.
 *   **Embeddings**: Local, in-process embeddings generated via `@xenova/transformers` using the `Xenova/all-MiniLM-L6-v2` model (384-dimensions) to power semantic search over `neighborhood_docs`.
@@ -83,6 +83,12 @@ N8N_WEBHOOK_URL=https://n8n.example.com/webhook/shortlist-pdf
     ```bash
     npm run dev
     ```
+
+### Railway Deployment
+The project includes a [railway.toml](file:///D:/NextLeap/Final%20Project/railway.toml) file that handles build and deployment steps automatically on Railway.
+*   **Build**: Handled via Nixpacks (`npm run build`).
+*   **Database Initialisation**: Runs `npm run db:push` automatically before launching `npm run start` to ensure your database schema is up-to-date.
+*   **SQLite Persistence**: To persist SQLite data, make sure to attach a **Persistent Volume** to the Next.js service in the Railway UI and mount it to `/data`, setting the `DATABASE_URL` environment variable to `file:/data/nextleap.db`.
 
 ---
 

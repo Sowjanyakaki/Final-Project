@@ -33,7 +33,7 @@ All 6 planned subsystems are implemented and unit-tested. Most have been **live-
 - **Live-tested against real servers** (see §3) — found and fixed real bugs in both our code and the third-party OSM server fork.
 
 ### Orchestration agent — `lib/agent/orchestrator.ts`, `session.ts`, tools
-- `searchListings`, `retrieveNeighborhoodDocs` (cosine-similarity RAG, adapted for SQLite instead of pgvector), `applyShortlistEdit`, `getOrCreateSession`, and `createAgent()` wiring all 6 tools behind Groq `llama-3.3-70b-versatile` via `streamText`.
+- `searchListings`, `retrieveNeighborhoodDocs` (cosine-similarity RAG, adapted for SQLite instead of pgvector), `applyShortlistEdit`, `getOrCreateSession`, and `createAgent()` wiring all 6 tools behind Groq `llama-3.3-70b-versatile` via `streamText` (later swapped to `openai/gpt-oss-120b` after Groq retired the `llama-3.3-70b-versatile`/`llama-3.1-8b-instant` model IDs).
 - Two real bugs found and fixed during live testing: missing `stopWhen` (defaults to a single step, so the agent would never explain its tool results), and non-JSON `Date` values in tool output breaking the SDK's own multi-step message validation.
 - **Live-verified**: a real conversation turn correctly called `retrieveNeighborhoodDocs` twice, stated uncertainty when the grounding data didn't answer the question, then called `searchListings` and replied with a real shortlisted listing.
 
