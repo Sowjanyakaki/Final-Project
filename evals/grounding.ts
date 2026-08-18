@@ -35,24 +35,15 @@ const NEIGHBORHOOD_CLAIM_PATTERN = /neighbo(u)?rhood|safe|safety|transit|metro|c
 
 async function judgeClaimSupport(claim: string, chunkText: string): Promise<{ supported: boolean; reasoning: string }> {
   const { object } = await generateObject({
-    model: groq('llama-3.3-70b-versatile'),
+    model: groq('openai/gpt-oss-120b'),
     schema: groundingJudgeSchema,
-    // llama-3.3-70b-versatile doesn't support Groq's json_schema structured-output
-    // mode (confirmed against the live API — 400 "does not support response
-    // format json_schema"). Falling back to plain JSON mode still gets a
-    // schema-validated object back via generateObject's own parsing.
-    providerOptions: { groq: { structuredOutputs: false } },
-    // Groq's json_object mode (the fallback above lands on) requires the
-    // literal word "json" somewhere in the prompt — confirmed against the
-    // live API: 400 "'messages' must contain the word 'json' ... to use
-    // 'response_format' of type 'json_object'."
     prompt: `You are fact-checking a neighborhood claim made by a real-estate assistant against its cited source text. Respond with a JSON object matching the required schema.
 
 Claim: "${claim}"
 
 Cited source text: "${chunkText}"
 
-Does the cited source text actually support the claim? Respond with supported=true only if the source text directly backs up what the claim states. If the source contradicts the claim, is silent on it, or is only loosely related, respond supported=false and explain why in reasoning.`,
+Does the cited source text actually support the claim? Respond with supported=true if the source text backs up what the claim states, including when the claim is about a specific property or street and the source describes the general character (safety, amenities, transit, etc.) of the broader locality that property is in — a locality-level description supports a property-level claim about that same locality unless the source specifically contradicts it. Respond with supported=false only if the source contradicts the claim or is silent/unrelated to the topic of the claim, and explain why in reasoning.`,
   });
   return object;
 }

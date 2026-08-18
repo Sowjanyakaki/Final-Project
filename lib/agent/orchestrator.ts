@@ -147,7 +147,7 @@ export function createAgent(sessionId: string) {
     systemPrompt: SYSTEM_PROMPT,
     stream: (messages: ModelMessage[], options?: { onFinish?: (event: { text: string }) => void | Promise<void> }) =>
       streamText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('openai/gpt-oss-120b'),
         system: SYSTEM_PROMPT,
         messages,
         tools,
