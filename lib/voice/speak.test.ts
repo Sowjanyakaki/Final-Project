@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { speak } from './speak';
+import { speak, stripMarkdownForSpeech } from './speak';
 
 describe('speak', () => {
   let utteranceInstances: Array<{ text: string; onend: (() => void) | null; onerror: (() => void) | null }>;
@@ -65,5 +65,33 @@ describe('speak', () => {
 
     utteranceInstances[0].onend?.();
     await promise;
+  });
+
+  it('strips markdown formatting before speaking so punctuation is never read aloud', async () => {
+    const promise = speak('**Green Meadows** is a great pick:\n- Balcony\n- Near a `metro` stop\n\nSee [details](https://example.com).');
+
+    expect(utteranceInstances[0].text).toBe(
+      'Green Meadows is a great pick:\nBalcony\nNear a metro stop\n\nSee details.'
+    );
+
+    utteranceInstances[0].onend?.();
+    await promise;
+  });
+});
+
+describe('stripMarkdownForSpeech', () => {
+  it('removes bold, italic, headers, bullets, code, and link syntax', () => {
+    expect(stripMarkdownForSpeech('**bold** and *italic* and _also italic_')).toBe(
+      'bold and italic and also italic'
+    );
+    expect(stripMarkdownForSpeech('# Heading\n- one\n- two')).toBe('Heading\none\ntwo');
+    expect(stripMarkdownForSpeech('Use the `searchListings` tool.')).toBe('Use the searchListings tool.');
+    expect(stripMarkdownForSpeech('See [the listing](https://example.com/1) for more.')).toBe(
+      'See the listing for more.'
+    );
+  });
+
+  it('leaves plain text untouched', () => {
+    expect(stripMarkdownForSpeech('Here are 3 matching listings.')).toBe('Here are 3 matching listings.');
   });
 });
